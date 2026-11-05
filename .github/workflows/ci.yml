@@ -1,0 +1,58 @@
+# CI: lint, format, tipi e test completi con un Postgres 16 di servizio.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 15
+    env:
+      TEST_PG_ADMIN_URL: postgresql://postgres:postgres@127.0.0.1:55432/postgres
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.12.19"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Dipendenze
+        run: uv sync --locked
+
+      - name: Ruff (lint)
+        run: uv run --frozen ruff check .
+
+      - name: Ruff (format)
+        run: uv run --frozen ruff format --check .
+
+      - name: Mypy
+        run: uv run --frozen mypy app
+
+      - name: Pytest
+        run: uv run --frozen pytest

@@ -1,0 +1,19 @@
+# Postgres usa e getta per i test (dati in tmpfs, persi a ogni riavvio).
+# Avvio: docker compose -f docker-compose.test.yml up -d
+name: a4u-lms-api-test
+
+services:
+  postgres-test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "127.0.0.1:55432:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 15

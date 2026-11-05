@@ -1,0 +1,37 @@
+# Produzione: VM web2 (192.168.40.13), accanto al compose di a4u.
+# Avvio: docker compose up -d --build   (richiede .env, vedi .env.example)
+name: a4u-lms-api
+
+services:
+  lms-api:
+    build: .
+    image: a4u-lms-api:latest
+    env_file: .env
+    init: true
+    restart: unless-stopped
+    ports:
+      # Pubblicata sull'IP privato della VM, non su 127.0.0.1: il proxy TLS (openresty)
+      # gira su 192.168.40.10 e deve raggiungere la porta. Decisione dell'utente.
+      - "192.168.40.13:9002:8000"
+    networks:
+      - a4u_default
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 100
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+networks:
+  # Rete del compose di a4u: il Postgres è raggiungibile come postgres:5432.
+  a4u_default:
+    name: a4u_default
+    external: true

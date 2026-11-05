@@ -1,0 +1,26 @@
+# Solo app/, pyproject.toml e uv.lock servono all'immagine.
+.git
+.gitignore
+.github
+.venv
+.cteam
+.claude
+**/__pycache__
+**/*.py[cod]
+.mypy_cache
+.ruff_cache
+.pytest_cache
+.coverage
+htmlcov
+dist
+build
+*.egg-info
+.env
+.env.*
+tests
+docs
+docker-compose*.yml
+Dockerfile
+.dockerignore
+*.md
+.DS_Store
