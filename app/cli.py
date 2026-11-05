@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -25,12 +26,15 @@ from app.config import Settings, get_settings
 from app.db.engine import create_engine
 from app.db.queries import fetch_course, fetch_lessons, list_courses, list_organizations
 from app.files import lesson_files, logo_url
+from app.logging import JsonFormatter
 
 EXIT_OK = 0
 EXIT_FAILED_URLS = 1
 EXIT_USAGE = 2
 
 _PAGE_SIZE = 100
+# Marca l'handler installato da setup_cli_logging, per non duplicarlo.
+_CLI_HANDLER_MARK = "_a4u_lms_cli_json"
 _FILE_KINDS = ("dispensa", "slide", "discorso", "video", "video_avatar")
 
 
@@ -126,9 +130,11 @@ async def verify_urls(
     concurrency: int = 4,
     timeout_s: float = 15.0,
     transport: httpx.AsyncBaseTransport | None = None,
-    out: TextIO = sys.stdout,
+    out: TextIO | None = None,
 ) -> int:
     """Esegue il controllo e stampa il report; restituisce il codice di uscita."""
+    # sys.stdout letto alla chiamata, non all'import: rispetta i redirect (e capsys).
+    out = sys.stdout if out is None else out
     try:
         engine = create_engine(settings)
     except (ArgumentError, ValueError) as exc:
@@ -138,7 +144,10 @@ async def verify_urls(
         )
         return EXIT_USAGE
     try:
-        async with engine.connect() as conn:
+        async with engine.connect() as raw_conn:
+            # Una sola transazione REPEATABLE READ: le pagine di list_courses vedono lo stesso
+            # snapshot, quindi un corso aggiornato durante la scansione non viene saltato.
+            conn = await raw_conn.execution_options(isolation_level="REPEATABLE READ")
             targets = await collect_targets(conn, settings.ovh_public_base_url, org_id, course_id)
     except CliError as exc:
         print(f"Errore: {exc}", file=out)
@@ -187,6 +196,22 @@ def _positive_float(value: str) -> float:
     return number
 
 
+def setup_cli_logging(level: str) -> None:
+    """Log JSON su stderr (stesso formato del servizio): lo stdout resta per il report."""
+    root = logging.getLogger()
+    for existing in list(root.handlers):
+        if getattr(existing, _CLI_HANDLER_MARK, False):
+            root.removeHandler(existing)
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(JsonFormatter())
+    setattr(handler, _CLI_HANDLER_MARK, True)
+    root.addHandler(handler)
+    root.setLevel(level.upper())
+    # A INFO httpx scriverebbe ogni URL richiesto: come in app.logging.setup_logging.
+    for name in ("httpx", "httpcore"):
+        logging.getLogger(name).setLevel(logging.WARNING)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -207,6 +232,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         fields = ", ".join(str(err["loc"][0]) for err in exc.errors() if err["loc"])
         print(f"Errore di configurazione: variabili mancanti o non valide ({fields}).")
         return EXIT_USAGE
+    setup_cli_logging(settings.log_level)
     return asyncio.run(
         verify_urls(
             settings,

@@ -153,6 +153,28 @@ async def test_cancelled_request_is_logged_without_status() -> None:
     assert logs.events("unhandled_exception") == []
 
 
+async def test_exception_after_response_start_keeps_sent_status() -> None:
+    async def half_sent_app(scope: Scope, receive: Receive, send: Send) -> None:
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        raise RuntimeError("errore a risposta iniziata")
+
+    async def receive() -> Message:
+        return {"type": "http.request", "body": b""}
+
+    sent: list[Message] = []
+
+    async def send(message: Message) -> None:
+        sent.append(message)
+
+    scope: Scope = {"type": "http", "method": "GET", "path": "/v1/x", "headers": []}
+    with capture_logs() as logs:
+        await AccessLogMiddleware(half_sent_app)(scope, receive, send)
+    assert [m["type"] for m in sent] == ["http.response.start"]  # nessun secondo start
+    (access,) = logs.events("access")
+    assert access["status"] == 200
+    assert len(logs.events("unhandled_exception")) == 1
+
+
 async def test_unhandled_exception_is_generic_500(make_settings: SettingsFactory) -> None:
     async with running_app(make_settings()) as (app, client):
 

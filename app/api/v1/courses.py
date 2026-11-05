@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import AwareDatetime
 
 from app.assessment import parse_assessment, parse_mandatory_topics, parse_str_list
@@ -36,16 +36,24 @@ router = APIRouter()
 _NOT_FOUND = "Risorsa non trovata."
 
 
-def _require_org(ctx: AuthContext, org_id: UUID) -> None:
-    """404 (mai 403) se l'organizzazione non è associata alla chiave, senza toccare il DB."""
+async def require_org(org_id: UUID, ctx: AuthDep) -> AuthContext:
+    """404 (mai 403) se l'organizzazione non è associata alla chiave.
+
+    È una dependency dichiarata prima di `ConnDep`: il 404 arriva senza prendere una
+    connessione dal pool (api-v1.md §3, modules.md §2).
+    """
     if org_id not in ctx.org_ids:
         raise HTTPException(status_code=404, detail=_NOT_FOUND)
+    return ctx
+
+
+OrgCtx = Annotated[AuthContext, Depends(require_org)]
 
 
 @router.get("/organizations/{org_id}/courses", response_model=CoursePage)
 async def get_courses(
     org_id: UUID,
-    ctx: AuthDep,
+    ctx: OrgCtx,
     conn: ConnDep,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -53,7 +61,9 @@ async def get_courses(
     updated_since: Annotated[AwareDatetime | None, Query()] = None,
 ) -> CoursePage:
     """Corsi dell'organizzazione, dal più recente, con paginazione e filtri."""
-    _require_org(ctx, org_id)
+    if status is not None and "\x00" in status:
+        # Postgres rifiuta il byte 0x00 nei testi: nessun corso può avere questo status.
+        return CoursePage(items=[], total=0, limit=limit, offset=offset)
     rows, total = await list_courses(
         conn, org_id, status=status, updated_since=updated_since, limit=limit, offset=offset
     )
@@ -113,10 +123,9 @@ def _modules_out(
 
 @router.get("/organizations/{org_id}/courses/{course_id}", response_model=CourseDetail)
 async def get_course(
-    org_id: UUID, course_id: UUID, request: Request, ctx: AuthDep, conn: ConnDep
+    org_id: UUID, course_id: UUID, request: Request, _ctx: OrgCtx, conn: ConnDep
 ) -> CourseDetail:
     """Dettaglio di un corso: moduli, lezioni, URL dei file e test (3 query)."""
-    _require_org(ctx, org_id)
     course = await fetch_course(conn, org_id, course_id)
     if course is None:
         raise HTTPException(status_code=404, detail=_NOT_FOUND)

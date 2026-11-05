@@ -56,8 +56,9 @@ class AccessLogMiddleware:
             await self.app(scope, receive, send_wrapper)
         except Exception:
             error_log.exception("unhandled_exception", extra={"method": method, "path": path})
-            status = 500
+            # Se la risposta è già partita, il log tiene lo status effettivamente inviato.
             if not response_started:
+                status = 500
                 response = JSONResponse(status_code=500, content={"detail": INTERNAL_ERROR_DETAIL})
                 await response(scope, receive, send)
         finally:

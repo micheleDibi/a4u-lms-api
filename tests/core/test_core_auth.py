@@ -299,3 +299,18 @@ async def test_unknown_key_uses_one_short_connection(make_settings: SettingsFact
             _assert_unauthorized(await client.get(WHOAMI, headers=bearer(unknown)))
         assert checkouts[0] == 1
         assert app.state.engine.pool.checkedout() == 0
+
+
+async def test_rate_limited_request_with_cached_key_does_not_use_the_pool(
+    admin_conn: AsyncConnection, make_settings: SettingsFactory
+) -> None:
+    org = await create_org(admin_conn)
+    token = await create_api_key(admin_conn, org_ids=[org])
+    settings = make_settings(rate_limit_per_min=1, auth_cache_seconds=30)
+    async with running_app(settings) as (app, client):
+        assert (await client.get("/v1/organizations", headers=bearer(token))).status_code == 200
+        with count_checkouts(app) as checkouts:
+            response = await client.get("/v1/organizations", headers=bearer(token))
+        assert response.status_code == 429
+        assert checkouts[0] == 0  # chiave in cache e 429 prima di ConnDep della route
+        assert app.state.engine.pool.checkedout() == 0

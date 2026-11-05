@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import io
+import json
+import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
@@ -11,8 +13,10 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 from pydantic import SecretStr
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+import app.cli as cli
 from app.cli import (
     EXIT_FAILED_URLS,
     EXIT_OK,
@@ -23,7 +27,7 @@ from app.cli import (
     main,
     verify_urls,
 )
-from app.config import Settings
+from app.config import Settings, get_settings
 from tests.factories import create_course, create_lesson, create_module, create_org, create_user
 
 BASE = "https://media.test/media"
@@ -305,3 +309,69 @@ async def test_concurrency_limit_is_respected() -> None:
     assert len(results) == 8
     assert all(r.ok for r in results)
     assert peak == 2
+
+
+async def test_targets_are_read_in_one_repeatable_read_transaction(
+    admin_conn: AsyncConnection,
+    make_settings: Callable[..., Settings],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    org, _, _ = await _seed(admin_conn)
+    levels: list[str] = []
+    original = cli.collect_targets
+
+    async def spy(conn: AsyncConnection, *args: object, **kwargs: object) -> list[UrlTarget]:
+        result = await original(conn, *args, **kwargs)  # type: ignore[arg-type]
+        # Stessa transazione delle query di raccolta: il livello deve essere REPEATABLE READ.
+        levels.append((await conn.execute(text("SHOW transaction_isolation"))).scalar_one())
+        return result
+
+    monkeypatch.setattr(cli, "collect_targets", spy)
+    code = await verify_urls(make_settings(), org, transport=_transport([]), out=io.StringIO())
+
+    assert code == EXIT_OK
+    assert levels == ["repeatable read"]
+
+
+async def test_main_logs_json_to_stderr_and_keeps_stdout_clean(
+    admin_conn: AsyncConnection,
+    ro_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    user = await create_user(admin_conn)
+    org = await create_org(admin_conn)
+    course = await create_course(admin_conn, org_id=org, assignee_id=user)
+    module = await create_module(admin_conn, course_id=course, position=1)
+    # Path non sicuro: nessun URL da controllare, ma un warning `unsafe_file_path`.
+    await create_lesson(
+        admin_conn,
+        module_id=module,
+        course_id=course,
+        position=1,
+        pdf_status="ready",
+        pdf_path="../fuori.pdf",
+    )
+    monkeypatch.setenv("DATABASE_URL", ro_database_url)
+    monkeypatch.setenv("OVH_PUBLIC_BASE_URL", BASE)
+    root = logging.getLogger()
+    previous_level = root.level
+    get_settings.cache_clear()
+    try:
+        # main() usa asyncio.run: va eseguito fuori dal loop dei test.
+        code = await asyncio.to_thread(main, ["verify-urls", "--org", str(org)])
+    finally:
+        get_settings.cache_clear()
+        for handler in list(root.handlers):
+            if getattr(handler, "_a4u_lms_cli_json", False):
+                root.removeHandler(handler)
+        root.setLevel(previous_level)
+
+    captured = capsys.readouterr()
+    assert code == EXIT_OK
+    assert captured.out == "URL controllati: 0, OK: 0, non OK: 0, saltati: 0\n"
+    records = [json.loads(line) for line in captured.err.splitlines() if line.startswith("{")]
+    unsafe = [r for r in records if r["event"] == "unsafe_file_path"]
+    assert len(unsafe) == 1
+    assert unsafe[0]["kind"] == "dispensa"
+    assert "fuori.pdf" not in captured.err

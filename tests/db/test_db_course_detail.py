@@ -164,6 +164,38 @@ async def test_last_generated_at_only_ready_files_with_path(
     assert rows[0].last_generated_at == _at(3)
 
 
+async def test_last_generated_at_ignores_blank_paths(
+    ro_conn: AsyncConnection, admin_conn: AsyncConnection
+) -> None:
+    org, _, course_id = await _course(admin_conn, updated_at=_at(0))
+    module = await create_module(admin_conn, course_id=course_id, position=1)
+    await create_lesson(
+        admin_conn,
+        module_id=module,
+        course_id=course_id,
+        position=1,
+        pdf_status="ready",
+        pdf_path="o/c/l1.pdf",
+        pdf_generated_at=_at(1),
+        # Path di soli spazi = vuoto (files.md §3): non contano, anche se più recenti.
+        video_status="ready",
+        video_path="   ",
+        video_generated_at=_at(4),
+        avatar_video_status="ready",
+        avatar_video_path=" ",
+        avatar_video_generated_at=_at(5),
+    )
+
+    detail = await fetch_course(ro_conn, org, course_id)
+    recent, total = await list_courses(
+        ro_conn, org, status=None, updated_since=_at(2), limit=50, offset=0
+    )
+
+    assert detail is not None
+    assert detail.last_generated_at == _at(1)
+    assert (recent, total) == ([], 0)
+
+
 async def test_last_generated_at_none_without_ready_files(
     ro_conn: AsyncConnection, admin_conn: AsyncConnection
 ) -> None:

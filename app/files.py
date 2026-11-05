@@ -156,7 +156,10 @@ def _duration(lesson_id: UUID, raw: Any) -> float | None:
     if raw is None:
         return None
     if isinstance(raw, int | float) and not isinstance(raw, bool):
-        value = float(raw)
+        try:
+            value = float(raw)
+        except OverflowError:  # intero JSON troppo grande per un float: non valido
+            value = math.inf
         if math.isfinite(value) and value >= 0:
             return value
     logger.warning(

@@ -13,6 +13,10 @@ from app.config import Settings
 
 APPLICATION_NAME = "a4u-lms-api"
 POOL_RECYCLE_SECONDS = 1800
+# Attese massime: apertura di una connessione asyncpg (default 60 s) e connessione libera
+# dal pool. Con un DB che non risponde, /health/ready e l'autenticazione falliscono presto.
+CONNECT_TIMEOUT_SECONDS = 5
+POOL_TIMEOUT_SECONDS = 10
 
 
 def create_engine(settings: Settings) -> AsyncEngine:
@@ -27,12 +31,14 @@ def create_engine(settings: Settings) -> AsyncEngine:
         max_overflow=settings.db_max_overflow,
         pool_pre_ping=True,
         pool_recycle=POOL_RECYCLE_SECONDS,
+        pool_timeout=POOL_TIMEOUT_SECONDS,
         connect_args={
             "server_settings": {
                 "default_transaction_read_only": "on",
                 "statement_timeout": str(settings.db_statement_timeout_ms),
                 "application_name": APPLICATION_NAME,
-            }
+            },
+            "timeout": CONNECT_TIMEOUT_SECONDS,
         },
     )
 

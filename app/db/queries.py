@@ -170,8 +170,9 @@ def _last_generated_lateral() -> FromClause:
     """LATERAL con `last_generated_at` del corso esterno (db-read.md §5).
 
     Massimo, sulle lezioni non di verifica, del più recente `<x>_generated_at` dei file
-    pronti (`status = 'ready'` e path non vuoto). GREATEST e max ignorano i NULL: NULL se
-    nessun file è pronto. Stessa espressione per l'elenco e per il dettaglio.
+    pronti (`status = 'ready'` e path non vuoto né di soli spazi, come in files.md §3).
+    GREATEST e max ignorano i NULL: NULL se nessun file è pronto. Stessa espressione per
+    l'elenco e per il dettaglio.
     """
     lesson = course_lesson.c
     ready_times = [
@@ -179,7 +180,7 @@ def _last_generated_lateral() -> FromClause:
             (
                 and_(
                     lesson[f"{kind}_status"] == "ready",
-                    func.coalesce(lesson[f"{kind}_path"], "") != "",
+                    func.btrim(func.coalesce(lesson[f"{kind}_path"], "")) != "",
                 ),
                 lesson[f"{kind}_generated_at"],
             )

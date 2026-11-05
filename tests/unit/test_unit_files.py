@@ -257,7 +257,7 @@ def test_duration_valid(raw: Any, expected: float | None, caplog: pytest.LogCapt
 
 
 @pytest.mark.parametrize(
-    "raw", ["42", True, False, -1, -0.5, float("nan"), float("inf"), [1], {"s": 1}]
+    "raw", ["42", True, False, -1, -0.5, float("nan"), float("inf"), [1], {"s": 1}, 10**400]
 )
 def test_duration_invalid(raw: Any, caplog: pytest.LogCaptureFixture) -> None:
     with caplog.at_level(logging.WARNING):
