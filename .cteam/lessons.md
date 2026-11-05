@@ -7,3 +7,5 @@
 - Evitare dipendenze circolari tra perimetri (Settings ↔ engine, main ↔ auth): spezzare il nucleo in un task piccolo e prioritario che sblocca gli altri.
 - Prima di creare teammate controllare con ListAgents chi è ancora vivo: gli operatori della corsa precedente prendono subito i task assegnati al loro nome, e i nuovi nascono come `<nome>-2` (doppioni sugli stessi file). Riusare quelli vivi via SendMessage invece di crearne altri.
 - Con task completati, il controllo FUORI PERIMETRO segnala i loro file (task chiusi non più in elenco): verificare i perimetri originali prima di ripristinare, poi committare subito.
+- Prima di mettere dati reali di produzione nel repo, verificare la visibilità con `gh repo view --json visibility` (può cambiare durante la sessione): con repo pubblico, test, soluzioni e URL dei file vanno resi fittizi.
+- Quando un task si sblocca, l'operatore assegnato (es. reviewer) non sempre se ne accorge: mandargli subito un messaggio.
