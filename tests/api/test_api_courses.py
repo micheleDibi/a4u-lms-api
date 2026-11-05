@@ -118,6 +118,7 @@ async def test_course_list_item_shape(
         "created_at": item["created_at"],
         "updated_at": item["updated_at"],
         "last_generated_at": None,
+        "last_assessment_at": None,
     }
     assert datetime.fromisoformat(item["created_at"]) == T0
     assert datetime.fromisoformat(item["updated_at"]) == T0 + timedelta(days=1)

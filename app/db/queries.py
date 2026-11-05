@@ -144,6 +144,7 @@ class CourseListRow:
     created_at: datetime
     updated_at: datetime
     last_generated_at: datetime | None
+    last_assessment_at: datetime | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,6 +159,7 @@ class CourseDetailRow:
     created_at: datetime
     updated_at: datetime
     last_generated_at: datetime | None
+    last_assessment_at: datetime | None
     objectives: str
     argomenti_chiave: Any
     course_overview: str | None
@@ -166,12 +168,19 @@ class CourseDetailRow:
 _FILE_KINDS = ("pdf", "slides_pdf", "speech_pdf", "video", "avatar_video")
 
 
-def _last_generated_lateral() -> FromClause:
-    """LATERAL con `last_generated_at` del corso esterno (db-read.md §5).
+def _course_dates_lateral() -> FromClause:
+    """LATERAL con le date di contenuto del corso esterno (db-read.md §5).
 
-    Massimo, sulle lezioni non di verifica, del più recente `<x>_generated_at` dei file
-    pronti (`status = 'ready'` e path non vuoto né di soli spazi, come in files.md §3).
-    GREATEST e max ignorano i NULL: NULL se nessun file è pronto. Stessa espressione per
+    Un'unica scansione delle lezioni del corso, con due aggregati filtrati:
+    - `last_generated_at`: massimo, sulle lezioni non di verifica, del più recente
+      `<x>_generated_at` dei file pronti (`status = 'ready'` e path non vuoto né di soli
+      spazi, come in files.md §3);
+    - `last_assessment_at`: massimo, sulle lezioni di verifica con il test pronto o approvato
+      (il test esposto può comunque risultare null se content_raw non è valido), del più
+      recente tra rigenerazione
+      (`content_generated_at`), modifica manuale (`content_modified_at`) e approvazione
+      (`content_approved_at`).
+    GREATEST e max ignorano i NULL: NULL se non c'è nulla da contare. Stessa LATERAL per
     l'elenco e per il dettaglio.
     """
     lesson = course_lesson.c
@@ -187,10 +196,24 @@ def _last_generated_lateral() -> FromClause:
         )
         for kind in _FILE_KINDS
     ]
-    newest = func.greatest(*ready_times, type_=DateTime(timezone=True))
+    newest_file = func.greatest(*ready_times, type_=DateTime(timezone=True))
+    newest_assessment = func.greatest(
+        lesson.content_generated_at,
+        lesson.content_modified_at,
+        lesson.content_approved_at,
+        type_=DateTime(timezone=True),
+    )
+    ready_assessment = and_(
+        lesson.is_assessment.is_(true()), lesson.content_status.in_(("ready", "approved"))
+    )
     return (
-        select(func.max(newest).label("last_generated_at"))
-        .where(lesson.course_id == course.c.id, lesson.is_assessment.is_(false()))
+        select(
+            func.max(newest_file)
+            .filter(lesson.is_assessment.is_(false()))
+            .label("last_generated_at"),
+            func.max(newest_assessment).filter(ready_assessment).label("last_assessment_at"),
+        )
+        .where(lesson.course_id == course.c.id)
         .lateral("lg")
     )
 
@@ -218,6 +241,7 @@ def _course_list_columns(lateral: FromClause) -> list[ColumnElement[Any]]:
         c.created_at,
         c.updated_at,
         lateral.c.last_generated_at,
+        lateral.c.last_assessment_at,
     ]
 
 
@@ -237,6 +261,7 @@ def _course_list_row(row: _AnyRow) -> CourseListRow:
         created_at=row.created_at,
         updated_at=row.updated_at,
         last_generated_at=row.last_generated_at,
+        last_assessment_at=row.last_assessment_at,
     )
 
 
@@ -251,10 +276,10 @@ async def list_courses(
 ) -> tuple[list[CourseListRow], int]:
     """Pagina dei corsi dell'organizzazione e totale con gli stessi filtri (2 query al più).
 
-    `updated_since` filtra su GREATEST(updated_at, last_generated_at), che ignora i NULL.
-    Ordine stabile: updated_at DESC, id ASC.
+    `updated_since` filtra su GREATEST(updated_at, last_generated_at, last_assessment_at),
+    che ignora i NULL. Ordine stabile: updated_at DESC, id ASC.
     """
-    lateral = _last_generated_lateral()
+    lateral = _course_dates_lateral()
     conditions: list[ColumnElement[bool]] = [
         course.c.organization_id == org_id,
         organizations.c.deleted_at.is_(None),
@@ -262,9 +287,10 @@ async def list_courses(
     if status is not None:
         conditions.append(course.c.status == status)
     if updated_since is not None:
-        conditions.append(
-            func.greatest(course.c.updated_at, lateral.c.last_generated_at) >= updated_since
+        newest_change = func.greatest(
+            course.c.updated_at, lateral.c.last_generated_at, lateral.c.last_assessment_at
         )
+        conditions.append(newest_change >= updated_since)
 
     # La LATERAL serve al COUNT solo quando filtra (updated_since).
     count_from = _course_from(lateral if updated_since is not None else None)
@@ -288,7 +314,7 @@ async def fetch_course(
     conn: AsyncConnection, org_id: UUID, course_id: UUID
 ) -> CourseDetailRow | None:
     """Il corso, solo se è dell'organizzazione indicata e questa non è cancellata."""
-    lateral = _last_generated_lateral()
+    lateral = _course_dates_lateral()
     stmt = (
         select(
             *_course_list_columns(lateral),
@@ -317,6 +343,7 @@ async def fetch_course(
         created_at=row.created_at,
         updated_at=row.updated_at,
         last_generated_at=row.last_generated_at,
+        last_assessment_at=row.last_assessment_at,
         objectives=row.objectives,
         argomenti_chiave=row.argomenti_chiave,
         course_overview=row.course_overview,

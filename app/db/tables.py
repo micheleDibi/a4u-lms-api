@@ -102,6 +102,9 @@ course_lesson = Table(
     Column("learning_objectives", JSONB, nullable=False),
     Column("mandatory_topics", JSONB, nullable=False),
     Column("content_status", String(40), nullable=False),
+    # Date del contenuto: servono a last_assessment_at (db-read.md §5).
+    Column("content_generated_at", _tz()),
+    Column("content_modified_at", _tz()),
     Column("content_approved_at", _tz()),
     # Si legge SOLO con il CASE di db-read.md §2 (lezioni di verifica pronte).
     Column("content_raw", JSONB),

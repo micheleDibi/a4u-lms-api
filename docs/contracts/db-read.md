@@ -13,7 +13,7 @@ Tipi Postgres reali di a4u (servono per `tests/schema.sql`).
 | `organizations` | `id uuid PK`, `name varchar(255) NOT NULL`, `website varchar(255) NULL`, `logo_path varchar(500) NULL`, `deleted_at timestamptz NULL`, `created_at timestamptz NOT NULL`, `updated_at timestamptz NOT NULL` |
 | `course` | `id uuid PK`, `organization_id uuid NOT NULL FK organizations ON DELETE CASCADE`, `title varchar(200) NOT NULL`, `status varchar(40) NOT NULL`, `language_code varchar(10) NOT NULL`, `cfu smallint NOT NULL`, `corso_di_laurea varchar(200) NULL`, `objectives text NOT NULL DEFAULT ''`, `argomenti_chiave jsonb NOT NULL DEFAULT '[]'`, `course_overview text NULL`, `assignee_user_id uuid NOT NULL FK users ON DELETE RESTRICT`, `created_at timestamptz NOT NULL`, `updated_at timestamptz NOT NULL` |
 | `course_module` | `id uuid PK`, `course_id uuid NOT NULL FK course ON DELETE CASCADE`, `position smallint NOT NULL`, `module_code varchar(20) NOT NULL`, `title varchar(300) NOT NULL`, `description text NOT NULL DEFAULT ''` |
-| `course_lesson` | `id uuid PK`, `module_id uuid NOT NULL FK course_module`, `course_id uuid NOT NULL FK course`, `position smallint NOT NULL`, `lesson_code varchar(30) NOT NULL`, `title varchar(300) NOT NULL`, `summary text NOT NULL DEFAULT ''`, `is_introductory bool NOT NULL`, `is_assessment bool NOT NULL`, `learning_objectives jsonb NOT NULL`, `mandatory_topics jsonb NOT NULL`, `content_status varchar(40) NOT NULL`, `content_approved_at timestamptz NULL`, `content_raw jsonb NULL`, `pdf_status varchar(40) NOT NULL`, `pdf_path varchar(500) NULL`, `pdf_generated_at timestamptz NULL`, `slides_pdf_status`, `slides_pdf_path`, `slides_pdf_generated_at`, `speech_pdf_status`, `speech_pdf_path`, `speech_pdf_generated_at`, `video_status`, `video_path`, `video_generated_at`, `video_tokens jsonb NULL`, `avatar_video_status`, `avatar_video_path`, `avatar_video_generated_at` (stessi tipi delle colonne `pdf_*` corrispondenti) |
+| `course_lesson` | `id uuid PK`, `module_id uuid NOT NULL FK course_module`, `course_id uuid NOT NULL FK course`, `position smallint NOT NULL`, `lesson_code varchar(30) NOT NULL`, `title varchar(300) NOT NULL`, `summary text NOT NULL DEFAULT ''`, `is_introductory bool NOT NULL`, `is_assessment bool NOT NULL`, `learning_objectives jsonb NOT NULL`, `mandatory_topics jsonb NOT NULL`, `content_status varchar(40) NOT NULL`, `content_generated_at timestamptz NULL`, `content_modified_at timestamptz NULL`, `content_approved_at timestamptz NULL`, `content_raw jsonb NULL`, `pdf_status varchar(40) NOT NULL`, `pdf_path varchar(500) NULL`, `pdf_generated_at timestamptz NULL`, `slides_pdf_status`, `slides_pdf_path`, `slides_pdf_generated_at`, `speech_pdf_status`, `speech_pdf_path`, `speech_pdf_generated_at`, `video_status`, `video_path`, `video_generated_at`, `video_tokens jsonb NULL`, `avatar_video_status`, `avatar_video_path`, `avatar_video_generated_at` (stessi tipi delle colonne `pdf_*` corrispondenti) |
 | `users` | `id uuid PK`, `full_name varchar(255) NOT NULL`, `email citext NOT NULL` — il ruolo ha `SELECT` **solo** su queste tre colonne |
 | `lms_api_keys` | `id uuid PK`, `name varchar(120) NOT NULL`, `key_prefix varchar(16) NOT NULL UNIQUE`, `key_hash char(64) NOT NULL UNIQUE`, `expires_at timestamptz NULL`, `revoked_at timestamptz NULL` |
 | `lms_api_key_organizations` | `api_key_id uuid FK lms_api_keys ON DELETE CASCADE`, `organization_id uuid FK organizations ON DELETE CASCADE`, PK composta |
@@ -102,13 +102,15 @@ class CourseListRow:
     id: UUID; title: str; status: str; language_code: str; cfu: int
     corso_di_laurea: str | None; docente: DocenteRow
     created_at: datetime; updated_at: datetime; last_generated_at: datetime | None
+    last_assessment_at: datetime | None
 
 async def list_courses(
     conn, org_id: UUID, *, status: str | None, updated_since: datetime | None,
     limit: int, offset: int,
 ) -> tuple[list[CourseListRow], int]          # (items, total)
     # JOIN organizations deleted_at IS NULL; filtro status = esatto;
-    # filtro updated_since: GREATEST(c.updated_at, last_generated_at) >= :updated_since
+    # filtro updated_since:
+    # GREATEST(c.updated_at, last_generated_at, last_assessment_at) >= :updated_since
     # (GREATEST ignora i NULL); ORDER BY c.updated_at DESC, c.id ASC; total = COUNT con gli
     # stessi filtri (seconda query o window function, a scelta).
 
@@ -151,6 +153,19 @@ x ∈ {pdf, slides_pdf, speech_pdf, video, avatar_video}. NULL se nessun file pr
 `btrim` allinea la regola a `files.md` §3 (path di soli spazi = vuoto). I path rifiutati da
 `normalize_segments` (`..`) contano ancora: incoerenza nota e accettata (P2).
 Si calcola con una subquery aggregata o `LEFT JOIN LATERAL`; niente query per lezione.
+
+### `last_assessment_at` (in SQL, nella stessa LATERAL di `last_generated_at`)
+Massimo, sulle lezioni del corso con `is_assessment = true` e `content_status IN ('ready','approved')`
+(il test esposto può comunque risultare `null` se `content_raw` non è valido), di
+`GREATEST(content_generated_at, content_modified_at, content_approved_at)`. NULL se nessuna.
+Copre in a4u: rigenerazione (`content_generated_at`), modifica manuale delle domande
+(`content_modified_at`, anche dopo l'approvazione), approvazione (`content_approved_at`).
+`content_generated_at` e `content_modified_at` non sono ancora nel blocco `lms-read-contract` di
+a4u (il GRANT di tabella le rende già leggibili): aggiunta da fare a mano lato a4u.
+Limite noto: un test che smette di essere esposto (rigenerazione in corso, fallita o
+annullata, lezione di verifica eliminata) non sposta nessuna data: `last_assessment_at` può
+solo restare uguale, diminuire o diventare NULL. Il corso torna nel filtro quando una nuova
+generazione finisce. All'LMS si consiglia un riallineamento completo periodico.
 
 ## 6. Ruolo e permessi attesi
 

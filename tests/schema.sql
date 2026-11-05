@@ -91,6 +91,8 @@ CREATE TABLE course_lesson (
     learning_objectives jsonb NOT NULL DEFAULT '[]'::jsonb,
     mandatory_topics jsonb NOT NULL DEFAULT '[]'::jsonb,
     content_status varchar(40) NOT NULL DEFAULT 'empty',
+    content_generated_at timestamptz,  -- a4u migrazione 0015
+    content_modified_at timestamptz,  -- a4u migrazione 0018
     content_approved_at timestamptz,
     content_raw jsonb,
     pdf_status varchar(40) NOT NULL DEFAULT 'empty',

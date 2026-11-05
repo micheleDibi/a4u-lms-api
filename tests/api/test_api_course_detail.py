@@ -148,9 +148,10 @@ async def test_course_detail_full_structure(
     assert datetime.fromisoformat(body["last_generated_at"]) == GEN
     assert set(body) == {
         "id", "title", "status", "language_code", "cfu", "corso_di_laurea", "created_at",
-        "updated_at", "last_generated_at", "docente", "obiettivi_formativi", "argomenti_chiave",
-        "course_overview", "modules",
+        "updated_at", "last_generated_at", "last_assessment_at", "docente",
+        "obiettivi_formativi", "argomenti_chiave", "course_overview", "modules",
     }  # fmt: skip
+    assert body["last_assessment_at"] is None  # nessuna lezione di verifica
 
     assert [m["id"] for m in body["modules"]] == [str(m1), str(m2), str(m3)]
     mod1, mod2, mod3 = body["modules"]

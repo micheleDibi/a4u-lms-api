@@ -21,8 +21,22 @@ Specifica completa in `docs/contracts/` (`api-v1.md`, `files.md`, `db-read.md`, 
 Parametri di `/courses`: `limit` (1..100, default 50), `offset` (≥ 0), `status` (confronto
 esatto) e `updated_since` (ISO 8601 **con fuso orario**, altrimenti 422). Meglio usare `Z`,
 es. `2026-11-01T00:00:00Z`: un `+` del fuso nella query string va codificato come `%2B`,
-altrimenti diventa uno spazio e si ottiene 422. `updated_since`
-confronta con il più recente tra l'aggiornamento del corso e l'ultima generazione di un file.
+altrimenti diventa uno spazio e si ottiene 422.
+
+`updated_since` confronta con il più recente di tre istanti, tutti presenti sia nell'elenco
+sia nel dettaglio:
+- l'aggiornamento del corso (`updated_at`);
+- l'ultimo file pronto delle lezioni (`last_generated_at`);
+- l'ultima rigenerazione, modifica o approvazione di un test di verifica pronto o approvato
+  (`last_assessment_at`).
+
+Limite noto: un test può smettere di essere esposto, perché la rigenerazione è in corso,
+fallita o annullata, oppure perché la lezione di verifica è stata eliminata. In questi casi
+nessuna data si sposta in avanti, quindi `updated_since` non segnala il corso. Il corso torna
+nel filtro quando una nuova generazione finisce. All'LMS conviene un **riallineamento
+completo periodico**, cioè una lettura senza `updated_since`, per esempio una volta al
+giorno.
+
 L'ordinamento è `updated_at` decrescente.
 
 Nel dettaglio del corso, ogni lezione ha `files` (`dispensa`, `slide`, `discorso`, `video`,
@@ -76,6 +90,10 @@ La CI (`.github/workflows/ci.yml`) esegue ruff, mypy e pytest con un Postgres di
 2. **Chiave API.** In a4u: *Admin → Chiavi API LMS*, nuova chiave associata alle
    organizzazioni da esporre. Il token compare **una sola volta**: va consegnato all'LMS
    subito. In a4u resta solo l'hash.
+3. **Contratto di lettura in a4u.** Aggiungere `course_lesson.content_generated_at` e
+   `course_lesson.content_modified_at` al blocco `lms-read-contract` di `a4u/docs/lms-api.md`
+   §1: il servizio le legge per `last_assessment_at`. Non serve un nuovo GRANT, perché su
+   `course_lesson` il GRANT è per tabella.
 
 ## 4. Build e avvio sulla VM web2 (192.168.40.13)
 
@@ -318,6 +336,9 @@ schema e GRANT.
   - Per le tabelle intere: `GRANT SELECT ON TABLE <tabella> TO a4u_lms_ro;`.
   - Per `users` il permesso è **per colonna** e va esteso a mano:
     `GRANT SELECT (id, full_name, email) ON users TO a4u_lms_ro;`.
+
+Vale anche per `content_generated_at` e `content_modified_at` di `course_lesson`: devono stare
+nel contratto di lettura di a4u, come indicato nel §3, passo 3.
 
 ## 10. Verifica degli URL dei file (`verify-urls`)
 

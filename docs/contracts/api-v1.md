@@ -62,17 +62,21 @@ CoursePage { items: list[CourseListItem], total: int, limit: int, offset: int }
 CourseListItem {
   id: UUID, title: str, status: str, language_code: str, cfu: int,
   corso_di_laurea: str | null, docente: DocenteOut,
-  created_at: datetime, updated_at: datetime, last_generated_at: datetime | null
+  created_at: datetime, updated_at: datetime, last_generated_at: datetime | null,
+  last_assessment_at: datetime | null
 }
 DocenteOut { id: UUID, full_name: str, email: str }
 ```
-Ordinamento `updated_at DESC, id ASC`. `updated_since` filtra su `GREATEST(updated_at, last_generated_at) >= updated_since`.
+Ordinamento `updated_at DESC, id ASC`. `updated_since` filtra su `GREATEST(updated_at, last_generated_at, last_assessment_at) >= updated_since`.
+`last_generated_at` = ultimo file pronto delle lezioni non di verifica; `last_assessment_at` = ultima
+rigenerazione, modifica o approvazione di un test di verifica pronto o approvato (db-read.md §5).
 
 ### `GET /v1/organizations/{org_id}/courses/{course_id}` → `CourseDetail`
 Org non accessibile → 404. Corso inesistente o di un'altra org → 404.
 ```
 CourseDetail {
   id, title, status, language_code, cfu, corso_di_laurea, created_at, updated_at, last_generated_at,
+  last_assessment_at,
   docente: DocenteOut,
   obiettivi_formativi: str,            # course.objectives
   argomenti_chiave: list[str],         # elementi non stringa scartati (warning)

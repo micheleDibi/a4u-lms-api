@@ -142,6 +142,7 @@ async def get_course(
         created_at=course.created_at,
         updated_at=course.updated_at,
         last_generated_at=course.last_generated_at,
+        last_assessment_at=course.last_assessment_at,
         docente=DocenteOut.model_validate(course.docente),
         obiettivi_formativi=course.objectives,
         argomenti_chiave=parse_str_list(

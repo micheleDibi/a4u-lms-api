@@ -31,7 +31,8 @@ def test_expected_columns_derived_from_tables() -> None:
         "expires_at",
         "revoked_at",
     }
-    assert len(EXPECTED_COLUMNS["course_lesson"]) == 30
+    assert len(EXPECTED_COLUMNS["course_lesson"]) == 32
+    assert {"content_generated_at", "content_modified_at"} <= EXPECTED_COLUMNS["course_lesson"]
     assert "password_hash" not in EXPECTED_COLUMNS["users"]
 
 

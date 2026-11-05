@@ -123,8 +123,17 @@ async def create_module(
 
 
 async def create_lesson(
-    conn: AsyncConnection, *, module_id: UUID, course_id: UUID, position: int, **cols: Any
+    conn: AsyncConnection,
+    *,
+    module_id: UUID,
+    course_id: UUID,
+    position: int,
+    content_generated_at: datetime | None = None,
+    content_modified_at: datetime | None = None,
+    content_approved_at: datetime | None = None,
+    **cols: Any,
 ) -> UUID:
+    """Lezione; le date del contenuto (rigenerazione, modifica, approvazione) di default NULL."""
     if "lesson_code" in cols:
         lesson_code = cols["lesson_code"]
     else:
@@ -147,6 +156,9 @@ async def create_lesson(
         "is_assessment": False,
         "learning_objectives": [],
         "mandatory_topics": [],
+        "content_generated_at": content_generated_at,
+        "content_modified_at": content_modified_at,
+        "content_approved_at": content_approved_at,
         **dict.fromkeys(_FILE_STATUSES, "empty"),
     }
     values.update(cols)

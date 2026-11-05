@@ -39,6 +39,7 @@ class CourseListItem(_FromAttributes):
     created_at: datetime
     updated_at: datetime
     last_generated_at: datetime | None
+    last_assessment_at: datetime | None
 
 
 class CoursePage(BaseModel):
@@ -129,6 +130,7 @@ class CourseDetail(BaseModel):
     created_at: datetime
     updated_at: datetime
     last_generated_at: datetime | None
+    last_assessment_at: datetime | None
     docente: DocenteOut
     obiettivi_formativi: str
     argomenti_chiave: list[str]
