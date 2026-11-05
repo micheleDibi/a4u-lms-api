@@ -10,7 +10,7 @@ Proprietario: lead. Il dettaglio dei singoli contratti è in `db-read.md`, `api-
 | `Dockerfile`, `docker-compose.yml`, `.env.example`, `README.md`, `.github/**` | deploy, CI, documentazione | infra |
 | `app/db/__init__.py`, `app/db/tables.py`, `app/db/engine.py`, `app/db/contract.py`, `app/db/queries.py` | accesso al DB | db |
 | `tests/schema.sql`, `tests/conftest.py`, `tests/factories.py`, `tests/db/**` | fixture condivise, test del layer DB | db |
-| `app/__init__.py`, `app/main.py`, `app/config.py`, `app/logging.py`, `app/api/__init__.py`, `app/api/health.py` | nucleo dell'app | backend |
+| `app/__init__.py`, `app/main.py`, `app/config.py`, `app/logging.py`, `app/api/__init__.py`, `app/api/health.py` (+ stub di `app/api/v1/__init__.py` in T5) | nucleo dell'app | backend |
 | `app/auth.py`, `app/ratelimit.py`, `app/middleware.py`, `tests/core/**` | autenticazione, limiti, log di accesso | backend |
 | `app/files.py`, `app/assessment.py`, `app/schemas.py`, `app/api/v1/**`, `app/cli.py`, `tests/unit/**`, `tests/api/**`, `tests/cli/**` | dominio, API v1, CLI | backend-b |
 
@@ -39,7 +39,7 @@ def create_app(settings: Settings | None = None) -> FastAPI
 
 `create_app` registra inoltre l'`AccessLogMiddleware`, i gestori degli errori 404/500 di `api-v1.md`, `app.api.health.router` e `app.api.v1.router`. Con `DOCS_ENABLED=false` imposta `docs_url`, `redoc_url` e `openapi_url` a `None`.
 
-Avvio: `uvicorn --factory app.main:create_app --host 0.0.0.0 --port 8000 --workers 1 --no-access-log`.
+Avvio: `uvicorn --factory app.main:create_app --host 0.0.0.0 --port 8000 --workers 1 --no-access-log --no-server-header --proxy-headers --forwarded-allow-ips=192.168.40.10` (192.168.40.10 = proxy TLS di prod).
 
 ```python
 # app/auth.py (backend)
@@ -53,8 +53,12 @@ class Authenticator:                       # contiene la cache TTL (api-v1.md §
     def __init__(self, cache_seconds: int) -> None: ...
     async def authenticate(self, conn: AsyncConnection, authorization: str | None) -> AuthContext | None
 
-async def require_api_key(request: Request, conn: ConnDep) -> AuthContext
-    # autentica (401), imposta request.state.key_prefix, applica il rate limit (429)
+async def require_api_key(request: Request) -> AuthContext
+    # NON dipende da ConnDep (P2-1 di R6: un flood non autenticato non deve occupare il pool).
+    # 1) formato del token: se non valido -> 401 senza toccare il DB;
+    # 2) cache: se c'è una voce valida -> nessuna connessione;
+    # 3) solo in caso di mancata cache: `async with request.app.state.engine.connect()` breve,
+    #    chiusa prima di proseguire; poi rate limit (429).
 AuthDep = Annotated[AuthContext, Depends(require_api_key)]
 
 # app/ratelimit.py (backend)
@@ -68,10 +72,10 @@ class RateLimiter:
 # app/api/v1/__init__.py (backend-b)
 router = APIRouter(prefix="/v1")           # include i router di organizations e courses
 ```
-Il task 8 crea questo file con il solo `router` vuoto, così `app/main.py` lo importa da subito.
+Lo stub con il solo `router` vuoto lo crea backend in T5; dal T9 il file è di backend-b.
 
 Ogni route `/v1`:
-- dichiara `ctx: AuthDep` e `conn: ConnDep`;
+- dichiara `ctx: AuthDep` **prima** di `conn: ConnDep` (FastAPI risolve le dipendenze in ordine: un 401/429 non prende connessioni dal pool);
 - se `org_id not in ctx.org_ids` → 404 senza query;
 - per l'URL base usa `request.app.state.settings.ovh_public_base_url`.
 
@@ -91,7 +95,7 @@ python -m app.cli verify-urls --org <uuid> [--course <uuid>] [--concurrency 4] [
 - Nessun'altra dipendenza senza una richiesta `CONTRATTO:`.
 
 Configurazione dei tool:
-- **ruff:** `line-length = 100`, `target-version = "py312"`, regole `E, F, W, I, B, UP, SIM, ASYNC, S` (con `S101` ignorata in `tests/**`).
+- **ruff:** `line-length = 100`, `target-version = "py312"`, regole `E, F, W, I, B, UP, SIM, ASYNC, S` (con `S101`, `S105`, `S106`, `S608` ignorate in `tests/**`).
 - **mypy:** `strict = true` su `app/`, plugin `pydantic.mypy`.
 - **pytest:** `asyncio_mode = "auto"`, `asyncio_default_fixture_loop_scope = "session"`, `asyncio_default_test_loop_scope = "session"`, `addopts = "--import-mode=importlib -q"`, `testpaths = ["tests"]`.
 
@@ -101,13 +105,15 @@ Nessuna fixture DB è `autouse`: i test in `tests/unit/**` girano senza Postgres
 | fixture | scope | cosa fornisce |
 |---|---|---|
 | `pg_admin_url` | session | da env `TEST_PG_ADMIN_URL`, default `postgresql://postgres:postgres@127.0.0.1:55432/postgres` |
-| `test_db` | session | ricrea il DB `a4u_lms_test`, applica `tests/schema.sql`, crea o aggiorna il ruolo `a4u_lms_ro` (password `test_ro_password`) con **gli stessi** comandi del runbook §3.2 di a4u (read-only di default, CONNECT, USAGE, SELECT sulle 6 tabelle, SELECT su `users(id, full_name, email)`); restituisce la URL admin del DB di test |
-| `ro_database_url` | session | `postgresql://a4u_lms_ro:test_ro_password@127.0.0.1:55432/a4u_lms_test` (porta e host presi da `pg_admin_url`) |
+| `test_db` | session | ricrea il DB di nome `TEST_DB_NAME` (env, default `a4u_lms_test`; il gate usa `a4u_lms_test_<ruolo>`), applica `tests/schema.sql`, crea o aggiorna il ruolo `a4u_lms_ro` (password `test_ro_password`) con **gli stessi** comandi del runbook §3.2 di a4u (read-only di default, CONNECT, USAGE, SELECT sulle 6 tabelle, SELECT su `users(id, full_name, email)`); restituisce la URL admin del DB di test |
+| `ro_database_url` | session | `postgresql://a4u_lms_ro:test_ro_password@<host>:<porta>/<TEST_DB_NAME>` (host e porta presi da `pg_admin_url`) |
 | `admin_conn` | function | `AsyncConnection` SQLAlchemy come `postgres` sul DB di test, in `AUTOCOMMIT`; a fine test esegue `TRUNCATE` di tutte le tabelle con `CASCADE` |
 | `make_settings` | function | `(**overrides) -> Settings`: `DATABASE_URL = ro_database_url`, `OVH_PUBLIC_BASE_URL = "https://media.test/media"`, `RATE_LIMIT_PER_MIN = 10000`, gli altri default di `config.md` |
 | `ro_conn` | function | `AsyncConnection` da `create_engine(make_settings())`, cioè come `a4u_lms_ro` |
 | `client_factory` | function | `(settings: Settings \| None = None) -> AsyncContextManager[httpx.AsyncClient]`: esegue il lifespan di `create_app(settings)` e restituisce un client `ASGITransport` con `base_url="http://test"` |
 | `client` | function | `client_factory()` con le impostazioni di default |
+
+Import nei test: `from app.… import …` e `from tests.factories import …` (pytest `pythonpath = ["."]`).
 
 `tests/factories.py`: funzioni `async` con primo argomento `admin_conn`, che restituiscono l'`UUID` creato.
 - `create_user(conn, *, full_name="Docente Test", email=None)`

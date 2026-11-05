@@ -38,6 +38,7 @@ Header mancante, schema diverso da `Bearer`, formato errato, chiave inesistente,
 | 401 | §1 | `{"detail": "Credenziali non valide o mancanti."}` + `WWW-Authenticate: Bearer` |
 | 404 | org non associata alla chiave, soft-deleted o inesistente; corso inesistente o di un'org non accessibile; path sconosciuto | `{"detail": "Risorsa non trovata."}` |
 | 422 | parametri di query o di path non validi (validazione FastAPI, formato di default) | default FastAPI |
+| 405 | metodo diverso da GET (o HEAD dove FastAPI lo consente) su un path esistente | `{"detail": "Metodo non consentito."}` + header `Allow` invariato |
 | 429 | rate limit | `{"detail": "Troppe richieste."}` + `Retry-After: <secondi interi ≥ 1>` |
 | 503 | `/health/ready` non pronto | `{"status": "unavailable"}` |
 | 500 | errore inatteso (loggato con traceback, senza header) | `{"detail": "Errore interno."}` |
