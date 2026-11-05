@@ -1,0 +1,8 @@
+{
+  "isolation": "shared",
+  "max_operatori": 5,
+  "contratti": "docs/contracts",
+  "ruoli": {},
+  "worktree": { "link": [] },
+  "notifiche": true
+}

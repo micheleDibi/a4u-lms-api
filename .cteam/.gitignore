@@ -1,0 +1,6 @@
+# File di lavoro di cteam: non vanno nel repository.
+*
+!.gitignore
+!gate.sh
+!config.json
+!lessons.md
