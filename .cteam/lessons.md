@@ -5,3 +5,5 @@
 - Nei task di scaffold elencare già `pythonpath = ["."]` (pytest importlib + `package = false`) e le per-file-ignores dei test (S101/S105/S106/S608), e testare il gate con bash 3.2 (array vuoti con `set -u`).
 - Un operatore chiude il task prima di leggere una richiesta di modifica: quando serve una correzione su un file di un task chiuso, creare subito un nuovo task con `Files:` invece di mandare messaggi.
 - Evitare dipendenze circolari tra perimetri (Settings ↔ engine, main ↔ auth): spezzare il nucleo in un task piccolo e prioritario che sblocca gli altri.
+- Prima di creare teammate controllare con ListAgents chi è ancora vivo: gli operatori della corsa precedente prendono subito i task assegnati al loro nome, e i nuovi nascono come `<nome>-2` (doppioni sugli stessi file). Riusare quelli vivi via SendMessage invece di crearne altri.
+- Con task completati, il controllo FUORI PERIMETRO segnala i loro file (task chiusi non più in elenco): verificare i perimetri originali prima di ripristinare, poi committare subito.
