@@ -27,7 +27,15 @@ def _organization_out(row: OrganizationRow, base_url: str) -> OrganizationOut:
     )
 
 
-@router.get("/organizations", response_model=list[OrganizationOut])
+@router.get(
+    "/organizations",
+    response_model=list[OrganizationOut],
+    summary="Elenco delle organizzazioni",
+    description=(
+        "Organizzazioni associate alla chiave API e non eliminate, ordinate per nome e id. "
+        "`courses_count` conta i corsi in ogni stato."
+    ),
+)
 async def get_organizations(request: Request, ctx: AuthDep, conn: ConnDep) -> list[OrganizationOut]:
     """Organizzazioni della chiave non eliminate, ordinate per nome e id."""
     base_url: str = request.app.state.settings.ovh_public_base_url

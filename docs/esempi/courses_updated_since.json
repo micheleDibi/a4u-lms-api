@@ -1,0 +1,24 @@
+{
+  "items": [
+    {
+      "id": "06d8b75e-917e-48b7-93c3-e159536154d8",
+      "title": "Fisica",
+      "status": "avatar_video_ready",
+      "language_code": "it",
+      "cfu": 6,
+      "corso_di_laurea": "Ingegneria Industriale",
+      "docente": {
+        "id": "22cd8e1e-1c4d-400a-948e-b254b14ff112",
+        "full_name": "Mario Rossi",
+        "email": "mario.rossi@example.org"
+      },
+      "created_at": "2026-11-04T15:49:52.178214Z",
+      "updated_at": "2026-11-05T12:31:36.219129Z",
+      "last_generated_at": "2026-11-05T14:46:17.437246Z",
+      "last_assessment_at": "2026-11-05T09:12:22.833879Z"
+    }
+  ],
+  "total": 1,
+  "limit": 50,
+  "offset": 0
+}

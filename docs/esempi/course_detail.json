@@ -1,0 +1,194 @@
+{
+  "id": "06d8b75e-917e-48b7-93c3-e159536154d8",
+  "title": "Fisica",
+  "status": "avatar_video_ready",
+  "language_code": "it",
+  "cfu": 6,
+  "corso_di_laurea": "Ingegneria Industriale",
+  "created_at": "2026-11-04T15:49:52.178214Z",
+  "updated_at": "2026-11-05T12:31:36.219129Z",
+  "last_generated_at": "2026-11-05T14:46:17.437246Z",
+  "last_assessment_at": "2026-11-05T09:12:22.833879Z",
+  "docente": {
+    "id": "22cd8e1e-1c4d-400a-948e-b254b14ff112",
+    "full_name": "Mario Rossi",
+    "email": "mario.rossi@example.org"
+  },
+  "obiettivi_formativi": "Il corso di Fisica, parte integrante del curriculum di Ingegneria Industriale, si propone di fornire agli studenti una solida base teorica e pratica nei principi fondamentali della fisica, necessari per affrontare le sfide ingegneristiche contemporanee. In un contesto accademico sempre più orientato verso l’applicazione delle conoscenze scientifiche, questo corso si colloca come un tassello cruciale per la formazione di ingegneri capaci di comprendere e applicare le leggi fisiche che governano il mondo naturale. Gli studenti, al termine del corso, saranno in grado di affrontare problemi complessi, utilizzando un linguaggio scientifico appropriato e sviluppando un’autonomia di giudizio critica. La formazione proposta mira a preparare professionisti in grado di operare in vari ambiti ingegneristici, dalla progettazione alla ricerca, con una preparazione che integra teoria e pratica, fondamentale per il loro futuro professionale.\n\nAl termine del corso, lo studente sarà in grado di comprendere le leggi fisiche che regolano il moto di un corpo puntiforme e di un corpo solido, analizzando i principi della cinematica e della dinamica. Sarà in grado di applicare le leggi della dinamica per descrivere il moto di un corpo soggetto a diverse forze, utilizzando le formule appropriate per risolvere problemi pratici. Inoltre, lo studente avrà la capacità di analizzare le proprietà fondamentali dei fluidi, comprendendo i principi della meccanica dei fluidi e le loro applicazioni in ingegneria.\n\nSarà in grado di valutare i fenomeni termodinamici, applicando il teorema di conservazione dell'energia meccanica a sistemi classici e comprendendo l'equazione di stato dei gas perfetti per risolvere problemi termodinamici. Lo studente avrà anche la competenza di interpretare le leggi di elettrostatica, corrente elettrica e magnetismo, analizzando le equazioni relative ai campi elettrici e magnetici e le loro applicazioni pratiche. Sarà in grado di progettare circuiti elettrici semplici e di analizzare i circuiti oscillanti, comprendendo i principi dell'induzione elettromagnetica.\n\nInoltre, lo studente svilupperà un’adeguata attitudine al problem solving, imparando a impostare correttamente un esercizio e a scegliere le formule più appropriate da utilizzare. Sarà in grado di comunicare in modo efficace, utilizzando un linguaggio scientifico pertinente per presentare i risultati delle proprie analisi e argomentazioni, sia in forma scritta che orale. Infine, il corso mira a sviluppare l’autonomia nell’utilizzo dei materiali didattici e degli strumenti di apprendimento, preparando gli studenti a un approccio critico e proattivo nello studio della fisica.\n\nLa preparazione acquisita durante il corso sarà fondamentale per gli studi successivi in ingegneria e per l’ingresso nel mondo del lavoro, dove le competenze fisiche sono sempre più richieste. Gli studenti potranno applicare le conoscenze apprese in contesti professionali vari, dalla progettazione di sistemi meccanici e termici alla realizzazione di circuiti elettrici e dispositivi elettronici. Inoltre, le competenze sviluppate in questo corso saranno utili anche in ambito di ricerca, dove la comprensione dei principi fisici è essenziale per l'innovazione e lo sviluppo di nuove tecnologie. Questo corso, quindi, non solo fornisce una base solida in fisica, ma prepara gli studenti a diventare ingegneri competenti e responsabili, pronti ad affrontare le sfide del futuro.",
+  "argomenti_chiave": [
+    "Cinematica",
+    "Dinamica",
+    "Lavoro ed Energia",
+    "Meccanica dei fluidi",
+    "Termodinamica",
+    "Elettrostatica",
+    "Corrente elettrica",
+    "Magnetostatica",
+    "Induzione elettromagnetica",
+    "Circuiti oscillanti",
+    "Ottica",
+    "Principi di conservazione",
+    "Problem solving",
+    "Linguaggio scientifico",
+    "Autonomia di apprendimento"
+  ],
+  "course_overview": "Il corso di Fisica per Ingegneria Industriale costruisce una base rigorosa nei principali domini della fisica classica: meccanica del punto e del corpo rigido, principi di conservazione, fluidi, termodinamica, elettromagnetismo, circuiti, oscillazioni e ottica. L’impostazione è teorica, ma costantemente orientata al problem solving ingegneristico: gli studenti imparano a modellizzare sistemi fisici, scegliere leggi e approssimazioni appropriate, controllare la coerenza dimensionale dei risultati e comunicare argomentazioni con linguaggio scientifico corretto. Il percorso è pensato per studenti principianti di laurea triennale, con progressione dal metodo fisico-matematico di base fino all’analisi di fenomeni accoppiati e applicazioni elettriche, magnetiche e ottiche.",
+  "modules": [
+    {
+      "id": "719d19b9-129f-4c40-abe1-82cfdb248c3b",
+      "module_code": "M1",
+      "position": 1,
+      "title": "Fondamenti del metodo fisico e cinematica",
+      "description": "Il modulo introduce il corso, il linguaggio della fisica, le grandezze fondamentali, gli strumenti matematici essenziali e la descrizione del moto senza analizzarne ancora le cause.",
+      "lessons": [
+        {
+          "id": "f4416376-a740-487d-be23-3160bdfbf350",
+          "lesson_code": "M1.L1",
+          "position": 1,
+          "title": "Introduzione al corso: obiettivi, metodo e percorso didattico",
+          "summary": "Presentazione degli obiettivi formativi globali: comprensione delle leggi fisiche fondamentali, capacità di modellizzazione, problem solving e comunicazione scientifica. Illustrazione dei sei moduli del corso, dei prerequisiti richiesti in algebra, trigonometria, funzioni, derivate e integrali elementari, e della modalità didattica teorica con discussione guidata in classe piccola. Viene chiarito lo stile d’aula: costruzione dei concetti, dimostrazioni essenziali, esempi guidati e progressiva autonomia nello studio.",
+          "is_introductory": true,
+          "is_assessment": false,
+          "learning_objectives": [
+            "Lo studente sarà in grado di spiegare il ruolo della fisica nel percorso di Ingegneria Industriale e nei successivi moduli del corso.",
+            "Lo studente sarà in grado di distinguere i principali domini del corso: meccanica, fluidi, termodinamica, elettromagnetismo, circuiti, onde e ottica.",
+            "Lo studente sarà in grado di identificare i prerequisiti matematici e scientifici necessari per seguire con profitto il corso.",
+            "Lo studente sarà in grado di spiegare il metodo di lavoro richiesto: studio teorico, esempi guidati, esercizi, controllo dimensionale e comunicazione scientifica.",
+            "Lo studente sarà in grado di riconoscere materiali, bibliografia e modalità generali di preparazione allo studio autonomo."
+          ],
+          "mandatory_topics": [
+            {
+              "topic_id": "T1",
+              "topic": "Presentazione del corso e dei suoi obiettivi formativi globali"
+            },
+            {
+              "topic_id": "T2",
+              "topic": "Descrizione della struttura modulare e del percorso didattico in sei moduli"
+            },
+            {
+              "topic_id": "T3",
+              "topic": "Prerequisiti e attese verso gli studenti: algebra, trigonometria, funzioni, derivate e integrali elementari"
+            },
+            {
+              "topic_id": "T4",
+              "topic": "Bibliografia, dispense, esercizi e materiali di studio"
+            },
+            {
+              "topic_id": "T5",
+              "topic": "Metodo fisico: osservazione, modello, ipotesi, leggi e ambito di validità"
+            },
+            {
+              "topic_id": "T6",
+              "topic": "Modalità di lavoro in aula e nello studio: dimostrazioni essenziali, esempi guidati e progressiva autonomia"
+            }
+          ],
+          "files": {
+            "dispensa": {
+              "url": "https://progettiersaf.com/media/generated_pdfs/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333.pdf?v=1793870599",
+              "generated_at": "2026-11-05T09:23:19.589584Z"
+            },
+            "slide": {
+              "url": "https://progettiersaf.com/media/generated_pdfs/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333_slides.pdf?v=1793870626",
+              "generated_at": "2026-11-05T09:23:46.681617Z"
+            },
+            "discorso": {
+              "url": "https://progettiersaf.com/media/generated_pdfs/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333_speech.pdf?v=1793877787",
+              "generated_at": "2026-11-05T11:23:07.790428Z"
+            },
+            "video": {
+              "url": "https://progettiersaf.com/media/uploads/lesson_videos/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333.mp4?v=1793886360",
+              "generated_at": "2026-11-05T13:46:00.478494Z",
+              "duration_s": 1052.11
+            },
+            "video_avatar": {
+              "url": "https://progettiersaf.com/media/uploads/lesson_avatar_videos/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333.mp4?v=1793889977",
+              "generated_at": "2026-11-05T14:46:17.437246Z"
+            }
+          },
+          "test": null
+        },
+        {
+          "id": "ffdf12d3-bbae-40d3-bb79-1db68612e9e5",
+          "lesson_code": "M1.L8",
+          "position": 8,
+          "title": "Verifica delle competenze",
+          "summary": "",
+          "is_introductory": false,
+          "is_assessment": true,
+          "learning_objectives": [],
+          "mandatory_topics": [],
+          "files": {
+            "dispensa": null,
+            "slide": null,
+            "discorso": null,
+            "video": null,
+            "video_avatar": null
+          },
+          "test": {
+            "approved": true,
+            "multiple_choice_questions": [
+              {
+                "question_id": "MC1",
+                "text": "Qual è l'unità di misura della forza nel Sistema Internazionale?",
+                "options": [
+                  {
+                    "option_id": "A",
+                    "text": "Il chilogrammo (kg)."
+                  },
+                  {
+                    "option_id": "B",
+                    "text": "Il newton (N), pari a 1 kg·m/s²."
+                  },
+                  {
+                    "option_id": "C",
+                    "text": "Il joule (J)."
+                  },
+                  {
+                    "option_id": "D",
+                    "text": "Il watt (W)."
+                  }
+                ],
+                "correct_option_id": "B"
+              },
+              {
+                "question_id": "MC2",
+                "text": "In assenza di attrito con l'aria, quanto vale circa l'accelerazione di un corpo in caduta libera vicino alla superficie terrestre?",
+                "options": [
+                  {
+                    "option_id": "A",
+                    "text": "Circa 9,81 m/s², indipendentemente dalla massa del corpo."
+                  },
+                  {
+                    "option_id": "B",
+                    "text": "Zero, perché il corpo si muove a velocità costante."
+                  },
+                  {
+                    "option_id": "C",
+                    "text": "Circa 1 m/s²."
+                  },
+                  {
+                    "option_id": "D",
+                    "text": "È proporzionale alla massa del corpo."
+                  }
+                ],
+                "correct_option_id": "A"
+              }
+            ],
+            "open_questions": [
+              {
+                "question_id": "OP1",
+                "text": "Enuncia il secondo principio della dinamica e applicalo a un esempio numerico a tua scelta.",
+                "expected_answer": "La risposta deve enunciare F = m·a, con la forza risultante e l'accelerazione come vettori; indicare le unità (N, kg, m/s²); presentare un esempio con dati, calcolo e risultato con unità corrette."
+              },
+              {
+                "question_id": "OP2",
+                "text": "Spiega la differenza tra velocità media e velocità istantanea, con un esempio.",
+                "expected_answer": "La risposta deve definire la velocità media come spostamento diviso intervallo di tempo e la velocità istantanea come limite per intervallo che tende a zero (derivata della posizione); l'esempio deve mostrare un caso in cui le due differiscono."
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

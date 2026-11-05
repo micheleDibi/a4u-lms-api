@@ -1,0 +1,1323 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "a4u-lms-api",
+    "description": "API HTTP di **sola lettura** che espone a un LMS i corsi generati da a4u: organizzazioni, corsi, moduli, lezioni, URL pubblici dei file e test di verifica.\n\n- **Autenticazione:** header `Authorization: Bearer <token>` su tutti gli endpoint `/v1`.\n- **Errori:** corpo `{\"detail\": \"...\"}`; 404 uniforme per risorse inesistenti o non accessibili (mai 403).\n- **Metodi:** solo GET; gli altri metodi rispondono 405 `Metodo non consentito.` con header `Allow`.\n- **Limiti:** richieste al minuto per chiave; oltre il limite 429 con `Retry-After`.\n- **Date:** ISO 8601 con fuso orario; la parte frazionaria dei secondi è facoltativa (assente se zero): usare un parser ISO 8601.\n",
+    "version": "1"
+  },
+  "servers": [
+    {
+      "url": "https://lms-api.ersaf.it",
+      "description": "Produzione"
+    }
+  ],
+  "paths": {
+    "/health/live": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Il servizio è attivo",
+        "description": "Nessuna autenticazione e nessun accesso al DB. Pensato per i controlli interni.",
+        "operationId": "live_health_live_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthOut"
+                },
+                "example": {
+                  "status": "ok"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Il servizio è pronto",
+        "description": "Verifica la connessione al DB e il contratto delle colonne lette. Nessuna autenticazione. Pensato per i controlli interni.",
+        "operationId": "ready_health_ready_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthOut"
+                },
+                "example": {
+                  "status": "ok"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Servizio non pronto (dettagli solo nel log).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthOut"
+                },
+                "example": {
+                  "status": "unavailable"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organizations": {
+      "get": {
+        "summary": "Elenco delle organizzazioni",
+        "description": "Organizzazioni associate alla chiave API e non eliminate, ordinate per nome e id. `courses_count` conta i corsi in ogni stato.",
+        "operationId": "get_organizations_v1_organizations_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OrganizationOut"
+                  },
+                  "type": "array",
+                  "title": "Response Get Organizations V1 Organizations Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token assente, malformato, inesistente, revocato o scaduto (stesso corpo in ogni caso).",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Sempre `Bearer`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                },
+                "example": {
+                  "detail": "Credenziali non valide o mancanti."
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite di richieste al minuto superato per la chiave.",
+            "headers": {
+              "Retry-After": {
+                "description": "Secondi interi (≥ 1) da attendere prima di riprovare.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                },
+                "example": {
+                  "detail": "Troppe richieste."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Errore inatteso (dettagli solo nel log del servizio).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                },
+                "example": {
+                  "detail": "Errore interno."
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/organizations/{org_id}/courses": {
+      "get": {
+        "summary": "Elenco paginato dei corsi di un'organizzazione",
+        "description": "Corsi dell'organizzazione in ogni stato, ordinati per `updated_at` decrescente e poi per `id`. Per la sincronizzazione incrementale usare `updated_since`: restituisce i corsi con `updated_at`, `last_generated_at` o `last_assessment_at` maggiore o uguale alla data indicata.\n\nIn caso di parametri non validi (per esempio `updated_since` senza fuso orario o `limit` > 100) la risposta è 422 nel formato standard di FastAPI.",
+        "operationId": "get_courses_v1_organizations__org_id__courses_get",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Identificativo di un'organizzazione associata alla chiave API.",
+              "title": "Org Id"
+            },
+            "description": "Identificativo di un'organizzazione associata alla chiave API."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Numero massimo di corsi (1-100).",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "Numero massimo di corsi (1-100)."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Corsi da saltare (paginazione).",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Corsi da saltare (paginazione)."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 40
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtra per stato esatto (es. `published`); uno stato sconosciuto dà una lista vuota.",
+              "title": "Status"
+            },
+            "description": "Filtra per stato esatto (es. `published`); uno stato sconosciuto dà una lista vuota."
+          },
+          {
+            "name": "updated_since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Data ISO 8601 **con fuso orario** (es. `2026-01-01T00:00:00Z`; un `+` va codificato come `%2B`). Senza fuso: 422.",
+              "title": "Updated Since"
+            },
+            "description": "Data ISO 8601 **con fuso orario** (es. `2026-01-01T00:00:00Z`; un `+` va codificato come `%2B`). Senza fuso: 422."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoursePage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token assente, malformato, inesistente, revocato o scaduto (stesso corpo in ogni caso).",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Credenziali non valide o mancanti."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Sempre `Bearer`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite di richieste al minuto superato per la chiave.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Troppe richieste."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Secondi interi (≥ 1) da attendere prima di riprovare.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Errore inatteso (dettagli solo nel log del servizio).",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Errore interno."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organizzazione non associata alla chiave, eliminata o inesistente, oppure corso inesistente o di un'altra organizzazione. Non distingue «non esiste» da «non accessibile».",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Risorsa non trovata."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/organizations/{org_id}/courses/{course_id}": {
+      "get": {
+        "summary": "Dettaglio di un corso",
+        "description": "Corso completo: moduli e lezioni in ordine di posizione, URL pubblici dei file pronti e, per le lezioni di verifica pronte o approvate, il test **con le soluzioni** (da non mostrare agli studenti).\n\nSe `org_id` o `course_id` non sono UUID la risposta è 422 nel formato standard di FastAPI.",
+        "operationId": "get_course_v1_organizations__org_id__courses__course_id__get",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Identificativo di un'organizzazione associata alla chiave API.",
+              "title": "Org Id"
+            },
+            "description": "Identificativo di un'organizzazione associata alla chiave API."
+          },
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Identificativo del corso.",
+              "title": "Course Id"
+            },
+            "description": "Identificativo del corso."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token assente, malformato, inesistente, revocato o scaduto (stesso corpo in ogni caso).",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Credenziali non valide o mancanti."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Sempre `Bearer`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite di richieste al minuto superato per la chiave.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Troppe richieste."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Secondi interi (≥ 1) da attendere prima di riprovare.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Errore inatteso (dettagli solo nel log del servizio).",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Errore interno."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organizzazione non associata alla chiave, eliminata o inesistente, oppure corso inesistente o di un'altra organizzazione. Non distingue «non esiste» da «non accessibile».",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Risorsa non trovata."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AssessmentTest": {
+        "properties": {
+          "approved": {
+            "type": "boolean",
+            "title": "Approved",
+            "description": "`true` se il test è stato approvato in a4u."
+          },
+          "multiple_choice_questions": {
+            "items": {
+              "$ref": "#/components/schemas/MCQuestionOut"
+            },
+            "type": "array",
+            "title": "Multiple Choice Questions",
+            "description": "Domande a scelta multipla valide (quelle malformate sono omesse)."
+          },
+          "open_questions": {
+            "items": {
+              "$ref": "#/components/schemas/OpenQuestionOut"
+            },
+            "type": "array",
+            "title": "Open Questions",
+            "description": "Domande aperte valide (quelle malformate sono omesse)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "approved",
+          "multiple_choice_questions",
+          "open_questions"
+        ],
+        "title": "AssessmentTest",
+        "description": "Test di verifica con le soluzioni: va usato lato docente/correzione, non esposto così\ncom'è agli studenti."
+      },
+      "CourseDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "Identificativo del corso."
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "Titolo del corso."
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Stato di lavorazione del corso in a4u (es. `published`)."
+          },
+          "language_code": {
+            "type": "string",
+            "title": "Language Code",
+            "description": "Lingua del corso (es. `it`)."
+          },
+          "cfu": {
+            "type": "integer",
+            "title": "Cfu",
+            "description": "Crediti formativi."
+          },
+          "corso_di_laurea": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Corso Di Laurea",
+            "description": "Corso di laurea, se indicato."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Creazione del corso."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "Ultima modifica dei dati del corso."
+          },
+          "last_generated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Generated At",
+            "description": "Data dell'ultimo file pronto delle lezioni (escluse quelle di verifica). `null` se nessun file è pronto. Conta per `updated_since`."
+          },
+          "last_assessment_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Assessment At",
+            "description": "Data dell'ultima rigenerazione, modifica o approvazione di un test di verifica pronto o approvato. `null` se non ce ne sono. Conta per `updated_since`."
+          },
+          "docente": {
+            "$ref": "#/components/schemas/DocenteOut",
+            "description": "Docente assegnato al corso."
+          },
+          "obiettivi_formativi": {
+            "type": "string",
+            "title": "Obiettivi Formativi",
+            "description": "Obiettivi formativi del corso."
+          },
+          "argomenti_chiave": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Argomenti Chiave",
+            "description": "Argomenti chiave."
+          },
+          "course_overview": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Overview",
+            "description": "Panoramica del corso, se presente."
+          },
+          "modules": {
+            "items": {
+              "$ref": "#/components/schemas/ModuleOut"
+            },
+            "type": "array",
+            "title": "Modules",
+            "description": "Moduli in ordine di posizione."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "status",
+          "language_code",
+          "cfu",
+          "corso_di_laurea",
+          "created_at",
+          "updated_at",
+          "last_generated_at",
+          "last_assessment_at",
+          "docente",
+          "obiettivi_formativi",
+          "argomenti_chiave",
+          "course_overview",
+          "modules"
+        ],
+        "title": "CourseDetail",
+        "description": "Corso completo con moduli, lezioni, file e test. Le date sono ISO 8601 con fuso; la parte frazionaria dei secondi è facoltativa (assente se zero)."
+      },
+      "CourseListItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "Identificativo del corso."
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "Titolo del corso."
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Stato di lavorazione del corso in a4u (es. `published`)."
+          },
+          "language_code": {
+            "type": "string",
+            "title": "Language Code",
+            "description": "Lingua del corso (es. `it`)."
+          },
+          "cfu": {
+            "type": "integer",
+            "title": "Cfu",
+            "description": "Crediti formativi."
+          },
+          "corso_di_laurea": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Corso Di Laurea",
+            "description": "Corso di laurea, se indicato."
+          },
+          "docente": {
+            "$ref": "#/components/schemas/DocenteOut",
+            "description": "Docente assegnato al corso."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Creazione del corso."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "Ultima modifica dei dati del corso."
+          },
+          "last_generated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Generated At",
+            "description": "Data dell'ultimo file pronto delle lezioni (escluse quelle di verifica). `null` se nessun file è pronto. Conta per `updated_since`."
+          },
+          "last_assessment_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Assessment At",
+            "description": "Data dell'ultima rigenerazione, modifica o approvazione di un test di verifica pronto o approvato. `null` se non ce ne sono. Conta per `updated_since`."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "status",
+          "language_code",
+          "cfu",
+          "corso_di_laurea",
+          "docente",
+          "created_at",
+          "updated_at",
+          "last_generated_at",
+          "last_assessment_at"
+        ],
+        "title": "CourseListItem",
+        "description": "Corso nell'elenco paginato. Le date sono ISO 8601 con fuso; la parte frazionaria dei secondi è facoltativa (assente se zero)."
+      },
+      "CoursePage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CourseListItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "Corsi della pagina."
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Totale dei corsi che rispettano i filtri."
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit",
+            "description": "Dimensione della pagina richiesta."
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset",
+            "description": "Posizione di partenza richiesta."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "CoursePage"
+      },
+      "DocenteOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "Identificativo del docente."
+          },
+          "full_name": {
+            "type": "string",
+            "title": "Full Name",
+            "description": "Nome e cognome."
+          },
+          "email": {
+            "type": "string",
+            "title": "Email",
+            "description": "Email del docente."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "full_name",
+          "email"
+        ],
+        "title": "DocenteOut"
+      },
+      "ErrorOut": {
+        "properties": {
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "description": "Messaggio d'errore in italiano."
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "ErrorOut",
+        "description": "Corpo degli errori 401, 404, 429 e 500."
+      },
+      "FileOut": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "URL pubblico del file. Se `generated_at` è valorizzato contiene `?v=<epoch>`, che cambia a ogni rigenerazione (cache-busting): usare l'URL così com'è."
+          },
+          "generated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated At",
+            "description": "Generazione del file, se nota."
+          }
+        },
+        "type": "object",
+        "required": [
+          "url",
+          "generated_at"
+        ],
+        "title": "FileOut"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthOut": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "`ok` oppure `unavailable`."
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "HealthOut",
+        "description": "Corpo degli endpoint di salute."
+      },
+      "LessonFiles": {
+        "properties": {
+          "dispensa": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FileOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Dispensa in PDF. `null` se il file non è pronto."
+          },
+          "slide": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FileOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Slide in PDF. `null` se il file non è pronto."
+          },
+          "discorso": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FileOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Testo del discorso in PDF. `null` se il file non è pronto."
+          },
+          "video": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VideoFileOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Video della lezione. `null` se il file non è pronto."
+          },
+          "video_avatar": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FileOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Video con avatar. `null` se il file non è pronto."
+          }
+        },
+        "type": "object",
+        "required": [
+          "dispensa",
+          "slide",
+          "discorso",
+          "video",
+          "video_avatar"
+        ],
+        "title": "LessonFiles",
+        "description": "File della lezione. Tutti `null` per le lezioni di verifica."
+      },
+      "LessonOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "Identificativo della lezione."
+          },
+          "lesson_code": {
+            "type": "string",
+            "title": "Lesson Code",
+            "description": "Codice della lezione (es. `M1.L2`)."
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position",
+            "description": "Posizione nel modulo (da 1)."
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "Titolo della lezione."
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary",
+            "description": "Sintesi della lezione."
+          },
+          "is_introductory": {
+            "type": "boolean",
+            "title": "Is Introductory",
+            "description": "Lezione introduttiva."
+          },
+          "is_assessment": {
+            "type": "boolean",
+            "title": "Is Assessment",
+            "description": "Lezione di verifica: niente file, eventuale `test`."
+          },
+          "learning_objectives": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Learning Objectives",
+            "description": "Obiettivi di apprendimento."
+          },
+          "mandatory_topics": {
+            "items": {
+              "$ref": "#/components/schemas/MandatoryTopicOut"
+            },
+            "type": "array",
+            "title": "Mandatory Topics",
+            "description": "Argomenti obbligatori."
+          },
+          "files": {
+            "$ref": "#/components/schemas/LessonFiles",
+            "description": "File della lezione."
+          },
+          "test": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AssessmentTest"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Test della lezione di verifica, solo se pronto o approvato; altrimenti `null`. Contiene le soluzioni."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "lesson_code",
+          "position",
+          "title",
+          "summary",
+          "is_introductory",
+          "is_assessment",
+          "learning_objectives",
+          "mandatory_topics",
+          "files",
+          "test"
+        ],
+        "title": "LessonOut"
+      },
+      "MCOptionOut": {
+        "properties": {
+          "option_id": {
+            "type": "string",
+            "title": "Option Id",
+            "description": "Identificativo dell'opzione (es. `A`)."
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "Testo dell'opzione."
+          }
+        },
+        "type": "object",
+        "required": [
+          "option_id",
+          "text"
+        ],
+        "title": "MCOptionOut"
+      },
+      "MCQuestionOut": {
+        "properties": {
+          "question_id": {
+            "type": "string",
+            "title": "Question Id",
+            "description": "Identificativo della domanda."
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "Testo della domanda."
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/MCOptionOut"
+            },
+            "type": "array",
+            "title": "Options",
+            "description": "Opzioni, nell'ordine originale."
+          },
+          "correct_option_id": {
+            "type": "string",
+            "title": "Correct Option Id",
+            "description": "Opzione corretta (soluzione: da non mostrare agli studenti)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "question_id",
+          "text",
+          "options",
+          "correct_option_id"
+        ],
+        "title": "MCQuestionOut"
+      },
+      "MandatoryTopicOut": {
+        "properties": {
+          "topic_id": {
+            "type": "string",
+            "title": "Topic Id",
+            "description": "Identificativo dell'argomento."
+          },
+          "topic": {
+            "type": "string",
+            "title": "Topic",
+            "description": "Argomento da trattare obbligatoriamente."
+          }
+        },
+        "type": "object",
+        "required": [
+          "topic_id",
+          "topic"
+        ],
+        "title": "MandatoryTopicOut"
+      },
+      "ModuleOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "Identificativo del modulo."
+          },
+          "module_code": {
+            "type": "string",
+            "title": "Module Code",
+            "description": "Codice del modulo (es. `M1`)."
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position",
+            "description": "Posizione nel corso (da 1)."
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "Titolo del modulo."
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Descrizione del modulo."
+          },
+          "lessons": {
+            "items": {
+              "$ref": "#/components/schemas/LessonOut"
+            },
+            "type": "array",
+            "title": "Lessons",
+            "description": "Lezioni in ordine di posizione."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "module_code",
+          "position",
+          "title",
+          "description",
+          "lessons"
+        ],
+        "title": "ModuleOut"
+      },
+      "OpenQuestionOut": {
+        "properties": {
+          "question_id": {
+            "type": "string",
+            "title": "Question Id",
+            "description": "Identificativo della domanda."
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "Testo della domanda."
+          },
+          "expected_answer": {
+            "type": "string",
+            "title": "Expected Answer",
+            "description": "Traccia di risposta per la correzione (da non mostrare agli studenti)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "question_id",
+          "text",
+          "expected_answer"
+        ],
+        "title": "OpenQuestionOut"
+      },
+      "OrganizationOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "Identificativo dell'organizzazione."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Nome dell'organizzazione."
+          },
+          "website": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Website",
+            "description": "Sito web, se indicato."
+          },
+          "logo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo Url",
+            "description": "URL del logo: pubblico su OVH, oppure il valore assoluto originale. `null` se assente."
+          },
+          "courses_count": {
+            "type": "integer",
+            "title": "Courses Count",
+            "description": "Numero di corsi dell'organizzazione, in ogni stato."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "website",
+          "logo_url",
+          "courses_count"
+        ],
+        "title": "OrganizationOut"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "VideoFileOut": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "URL pubblico del file. Se `generated_at` è valorizzato contiene `?v=<epoch>`, che cambia a ogni rigenerazione (cache-busting): usare l'URL così com'è."
+          },
+          "generated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated At",
+            "description": "Generazione del video, se nota."
+          },
+          "duration_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration S",
+            "description": "Durata in secondi, se nota."
+          }
+        },
+        "type": "object",
+        "required": [
+          "url",
+          "generated_at",
+          "duration_s"
+        ],
+        "title": "VideoFileOut"
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Token nel formato `a4u_lms_<prefix8>_<secret>`: `prefix8` sono 8 caratteri `[a-z0-9]`, il secret (che può contenere `_`) è fornito una sola volta alla creazione della chiave in a4u."
+      }
+    }
+  }
+}

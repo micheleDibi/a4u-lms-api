@@ -1,0 +1,23 @@
+[
+  {
+    "id": "18f39a83-ce30-4301-ab2a-67cfd5f38137",
+    "name": "LMS",
+    "website": null,
+    "logo_url": "https://progettiersaf.com/media/uploads/organizations/cac4ef1d16c7422e9e95db0d7bfe44a1.png",
+    "courses_count": 1
+  },
+  {
+    "id": "34849fb8-0c8c-4326-b4b3-dcbfbb46e9ab",
+    "name": "SSML Lamezia Terme",
+    "website": "https://ssmllameziaterme.it",
+    "logo_url": "https://progettiersaf.com/media/uploads/organizations/cbcbc259737046a0a172afc398872877.png",
+    "courses_count": 83
+  },
+  {
+    "id": "2ab4e1d1-5579-417f-a053-7c577c7f288d",
+    "name": "We Make Future 2026",
+    "website": null,
+    "logo_url": "https://progettiersaf.com/media/uploads/organizations/d56413ec334b41ceb52051514ec6c55a.jpg",
+    "courses_count": 7
+  }
+]

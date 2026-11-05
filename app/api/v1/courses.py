@@ -4,9 +4,15 @@ from collections.abc import Sequence
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import AwareDatetime
 
+from app.api.v1.responses import (
+    NOT_FOUND,
+    NOT_FOUND_DETAIL,
+    PATH_VALIDATION_NOTE,
+    VALIDATION_NOTE,
+)
 from app.assessment import parse_assessment, parse_mandatory_topics, parse_str_list
 from app.auth import AuthContext, AuthDep
 from app.db.engine import ConnDep
@@ -33,10 +39,15 @@ from app.schemas import (
 
 router = APIRouter()
 
-_NOT_FOUND = "Risorsa non trovata."
+_NOT_FOUND = NOT_FOUND_DETAIL
+
+OrgId = Annotated[
+    UUID, Path(description="Identificativo di un'organizzazione associata alla chiave API.")
+]
+CourseId = Annotated[UUID, Path(description="Identificativo del corso.")]
 
 
-async def require_org(org_id: UUID, ctx: AuthDep) -> AuthContext:
+async def require_org(org_id: OrgId, ctx: AuthDep) -> AuthContext:
     """404 (mai 403) se l'organizzazione non è associata alla chiave.
 
     È una dependency dichiarata prima di `ConnDep`: il 404 arriva senza prendere una
@@ -50,15 +61,39 @@ async def require_org(org_id: UUID, ctx: AuthDep) -> AuthContext:
 OrgCtx = Annotated[AuthContext, Depends(require_org)]
 
 
-@router.get("/organizations/{org_id}/courses", response_model=CoursePage)
+@router.get(
+    "/organizations/{org_id}/courses",
+    response_model=CoursePage,
+    responses=NOT_FOUND,
+    summary="Elenco paginato dei corsi di un'organizzazione",
+    description=(
+        "Corsi dell'organizzazione in ogni stato, ordinati per `updated_at` decrescente e poi "
+        "per `id`. Per la sincronizzazione incrementale usare `updated_since`: restituisce i "
+        "corsi con `updated_at`, `last_generated_at` o `last_assessment_at` maggiore o uguale "
+        "alla data indicata." + VALIDATION_NOTE
+    ),
+)
 async def get_courses(
-    org_id: UUID,
+    org_id: OrgId,
     ctx: OrgCtx,
     conn: ConnDep,
-    limit: Annotated[int, Query(ge=1, le=100)] = 50,
-    offset: Annotated[int, Query(ge=0)] = 0,
-    status: Annotated[str | None, Query(max_length=40)] = None,
-    updated_since: Annotated[AwareDatetime | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=100, description="Numero massimo di corsi (1-100).")] = 50,
+    offset: Annotated[int, Query(ge=0, description="Corsi da saltare (paginazione).")] = 0,
+    status: Annotated[
+        str | None,
+        Query(
+            max_length=40,
+            description="Filtra per stato esatto (es. `published`); uno stato sconosciuto "
+            "dà una lista vuota.",
+        ),
+    ] = None,
+    updated_since: Annotated[
+        AwareDatetime | None,
+        Query(
+            description="Data ISO 8601 **con fuso orario** (es. `2026-01-01T00:00:00Z`; un "
+            "`+` va codificato come `%2B`). Senza fuso: 422.",
+        ),
+    ] = None,
 ) -> CoursePage:
     """Corsi dell'organizzazione, dal più recente, con paginazione e filtri."""
     if status is not None and "\x00" in status:
@@ -121,9 +156,19 @@ def _modules_out(
     ]
 
 
-@router.get("/organizations/{org_id}/courses/{course_id}", response_model=CourseDetail)
+@router.get(
+    "/organizations/{org_id}/courses/{course_id}",
+    response_model=CourseDetail,
+    responses=NOT_FOUND,
+    summary="Dettaglio di un corso",
+    description=(
+        "Corso completo: moduli e lezioni in ordine di posizione, URL pubblici dei file pronti "
+        "e, per le lezioni di verifica pronte o approvate, il test **con le soluzioni** (da non "
+        "mostrare agli studenti)." + PATH_VALIDATION_NOTE
+    ),
+)
 async def get_course(
-    org_id: UUID, course_id: UUID, request: Request, _ctx: OrgCtx, conn: ConnDep
+    org_id: OrgId, course_id: CourseId, request: Request, _ctx: OrgCtx, conn: ConnDep
 ) -> CourseDetail:
     """Dettaglio di un corso: moduli, lezioni, URL dei file e test (3 query)."""
     course = await fetch_course(conn, org_id, course_id)

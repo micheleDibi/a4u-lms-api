@@ -42,8 +42,9 @@ L'ordinamento è `updated_at` decrescente.
 Nel dettaglio del corso, ogni lezione ha `files` (`dispensa`, `slide`, `discorso`, `video`,
 `video_avatar`: URL pubblico su OVH, oppure `null` se il file non è pronto) e `test`, solo per
 le lezioni di verifica pronte o approvate. Il test **include le soluzioni**
-(`correct_option_id`, `expected_answer`). Gli URL dei file hanno `?v=<epoch>` della
-generazione, per invalidare le cache.
+(`correct_option_id`, `expected_answer`). Gli URL dei file hanno `?v=<epoch>`
+quando `generated_at` è valorizzato, altrimenti il parametro manca. Serve a invalidare le
+cache.
 
 `logo_url` si costruisce da `logo_path` come nel frontend di a4u: un path relativo diventa
 `<OVH_PUBLIC_BASE_URL>/uploads/...`, mentre un valore già assoluto (`http://`, `https://`,
@@ -123,36 +124,72 @@ Caratteristiche del container:
 - `HEALTHCHECK` su `/health/live`;
 - log json-file a rotazione (20 MB × 5).
 
-### Firewall sulla porta 9002 (PROPOSTA, non applicata)
+### Firewall sulla porta 9002
 
-La 9002 deve accettare connessioni **solo dal proxy 192.168.40.10**. Le regole `INPUT`, e
-quindi `ufw` senza configurazioni aggiuntive, **non** proteggono le porte pubblicate da
-Docker: il traffico verso i container passa dalla catena `FORWARD` dopo il DNAT. La regola va
-nella catena `DOCKER-USER`, che Docker non svuota. Nella catena la porta è già tradotta in
-8000, quindi si confronta la destinazione originale tramite conntrack:
+La 9002 accetta connessioni **solo dal proxy 192.168.40.10**. La regola è applicata in
+produzione dal 05/11/2026.
+
+Le regole `INPUT`, e quindi `ufw`, **non** proteggono le porte pubblicate da Docker: il
+traffico verso i container passa dalla catena `FORWARD` dopo il DNAT. La regola va quindi
+nella catena `DOCKER-USER`, che Docker non svuota. Lì la porta è già tradotta in 8000, per
+questo si confronta la destinazione originale tramite conntrack:
 
 ```sh
-sudo iptables -I DOCKER-USER -p tcp -m conntrack \
+sudo iptables -I DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL \
   --ctorigdst 192.168.40.13 --ctorigdstport 9002 \
   ! -s 192.168.40.10 -j DROP
 sudo iptables -L DOCKER-USER -n -v --line-numbers   # verifica
 ```
 
-- **Persistenza:** la regola non sopravvive a un riavvio. Si può usare `iptables-persistent`
-  (`netfilter-persistent save`), oppure, con `ufw`, lo stesso blocco in
-  `/etc/ufw/after.rules`, sotto `*filter`: prima si dichiara la catena con
-  `:DOCKER-USER - [0:0]`, poi si aggiunge la regola `-A DOCKER-USER ...`.
+`--ctdir ORIGINAL` è indispensabile. Le risposte del container appartengono alla stessa
+connessione, quindi hanno la stessa destinazione originale `192.168.40.13:9002`, ma come
+sorgente hanno l'IP del container. Senza quell'opzione la regola scarterebbe anche il SYN-ACK
+verso il proxy, che andrebbe in timeout.
+
+**Persistenza:** la regola non sopravvive a un riavvio. In produzione la reinserisce un'unità
+systemd che parte dopo Docker; sul server non c'è `netfilter-persistent` e `ufw` è inattivo.
+File `/etc/systemd/system/a4u-lms-api-firewall.service`:
+
+```ini
+[Unit]
+Description=a4u-lms-api: porta 9002 accettata solo dal proxy 192.168.40.10
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# $$R: systemd trasforma "$$" in "$", così la variabile arriva intatta a sh.
+ExecStart=/bin/sh -c 'R="-p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 192.168.40.13 --ctorigdstport 9002 ! -s 192.168.40.10 -j DROP"; iptables -C DOCKER-USER $$R 2>/dev/null || iptables -I DOCKER-USER $$R'
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```sh
+sudo systemctl daemon-reload && sudo systemctl enable --now a4u-lms-api-firewall.service
+sudo iptables -S DOCKER-USER   # deve comparire la regola con --ctdir ORIGINAL, una sola volta
+```
+
+L'unità è idempotente: `iptables -C` controlla se la regola esiste già, quindi riavviarla non
+crea duplicati.
+
 - **Curl dalla VM:** le connessioni partite dalla VM stessa non passano da `FORWARD`, quindi
   il `curl` di `/health` dalla VM continua a funzionare.
 - **Verifica:** da un altro host della LAN, `curl -m 3 http://192.168.40.13:9002/health/live`
   deve andare in timeout; dal proxy deve rispondere `{"status":"ok"}`.
 
-## 5. Esposizione TLS (PROPOSTA, non applicata)
+## 5. Esposizione TLS
 
-Il TLS lo termina il proxy su 192.168.40.10 (openresty, verosimilmente Nginx Proxy Manager).
-Per `lms-api.ersaf.it` servono:
-- il record DNS `lms-api.ersaf.it → 37.27.237.89`, **da creare**;
-- un proxy host verso `http://192.168.40.13:9002`.
+Il TLS lo termina il proxy su 192.168.40.10 (openresty, Nginx Proxy Manager). In produzione
+dal 05/11/2026 sono attivi:
+- il record DNS `lms-api.ersaf.it → 37.27.237.89`;
+- il proxy host verso `http://192.168.40.13:9002`, con certificato Let's Encrypt.
+
+**Da riapplicare:** il blocco *Advanced* con `limit_req` e con la `location /health/` riservata
+alle reti interne (vedi sotto). Va inserito dopo aver definito la zona in `http_top.conf` e
+riavviato NPM. Finché non c'è, il limite per IP non è attivo e `/health/*` è raggiungibile
+da Internet.
 
 Il container accetta gli header `X-Forwarded-*` solo da 192.168.40.10
 (`--forwarded-allow-ips`).
@@ -176,13 +213,33 @@ il limite il proxy risponde 429.
 | SSL → Force SSL, HTTP/2 Support | attivi (HSTS a scelta) |
 | Advanced | `limit_req zone=lms_api_per_ip burst=20 nodelay; limit_req_status 429;` più, facoltativi, `client_max_body_size 16k; proxy_read_timeout 60s;` |
 
-Per tenere `/health/*` interno, si aggiunge nel tab *Advanced* un blocco `location /health/`
-uguale a quello del blocco nginx qui sotto, con `allow`/`deny` e `proxy_pass`. In alternativa
-si crea una *Custom Location* `/health/` con `allow`/`deny` nel suo campo di configurazione.
-
 In NPM la `limit_req_zone` va nel contesto `http`, non nel tab *Advanced*, che finisce nel
-blocco `server`. Si aggiunge nel file `/data/nginx/custom/http_top.conf` del container NPM:
-`limit_req_zone $binary_remote_addr zone=lms_api_per_ip:10m rate=10r/s;`
+blocco `server`. **L'ordine conta:**
+
+1. Definire la zona nel file `/data/nginx/custom/http_top.conf` del container NPM:
+   `limit_req_zone $binary_remote_addr zone=lms_api_per_ip:10m rate=10r/s;`
+2. Riavviare NPM.
+3. Solo dopo, inserire le righe `limit_req` nel tab *Advanced*.
+
+Se le righe `limit_req` arrivano prima della zona, `nginx -t` fallisce e il proxy host
+diventa «Offline».
+
+Per tenere `/health/*` interno, nel tab *Advanced* si aggiunge il blocco
+`location /health/` completo, con `allow`/`deny`, `proxy_pass` e gli stessi `proxy_set_header`
+del blocco nginx qui sotto:
+
+```nginx
+location /health/ {
+    allow 192.168.40.0/24;
+    allow 127.0.0.1;
+    deny  all;
+
+    proxy_pass http://192.168.40.13:9002;
+    proxy_set_header Host              $host;
+    proxy_set_header X-Forwarded-For   $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
 
 Blocco nginx equivalente, se il proxy si configura a mano:
 
@@ -268,6 +325,10 @@ all'avatar), poi `published` e `archived`. Uno status sconosciuto restituisce un
 non un errore.
 
 ## Per l'integratore LMS
+
+La guida completa per i programmatori dell'LMS è
+[`docs/integrazione-lms.md`](docs/integrazione-lms.md), con gli esempi in [`docs/esempi/`](docs/esempi/): risposte reali
+anonimizzate, tranne il test di verifica e i percorsi dei file, che sono fittizi. In sintesi:
 
 - **Campi da sanificare.** `website` e `logo_url` arrivano **così come sono salvati in a4u**,
   senza filtri sullo schema:

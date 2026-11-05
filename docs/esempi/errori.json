@@ -1,0 +1,88 @@
+{
+  "401_credenziali_mancanti": {
+    "status": 401,
+    "richiesta": "GET /v1/organizations senza header Authorization (stessa risposta per token errato, revocato o scaduto)",
+    "header_rilevanti": {
+      "WWW-Authenticate": "Bearer"
+    },
+    "body": {
+      "detail": "Credenziali non valide o mancanti."
+    }
+  },
+  "404_organizzazione": {
+    "status": 404,
+    "richiesta": "GET /v1/organizations/{org_id}/courses con un'organizzazione non associata alla chiave",
+    "header_rilevanti": {},
+    "body": {
+      "detail": "Risorsa non trovata."
+    }
+  },
+  "404_corso": {
+    "status": 404,
+    "richiesta": "GET /v1/organizations/{org_id}/courses/{course_id} con un corso inesistente o di un'altra organizzazione",
+    "header_rilevanti": {},
+    "body": {
+      "detail": "Risorsa non trovata."
+    }
+  },
+  "405_metodo": {
+    "status": 405,
+    "richiesta": "POST su un path esistente (l'API accetta solo GET)",
+    "header_rilevanti": {
+      "Allow": "GET"
+    },
+    "body": {
+      "detail": "Metodo non consentito."
+    }
+  },
+  "422_limit": {
+    "status": 422,
+    "richiesta": "GET /v1/organizations/{org_id}/courses?limit=500",
+    "header_rilevanti": {},
+    "body": {
+      "detail": [
+        {
+          "type": "less_than_equal",
+          "loc": [
+            "query",
+            "limit"
+          ],
+          "msg": "Input should be less than or equal to 100",
+          "input": "500",
+          "ctx": {
+            "le": 100
+          }
+        }
+      ]
+    }
+  },
+  "422_updated_since_senza_fuso": {
+    "status": 422,
+    "richiesta": "GET /v1/organizations/{org_id}/courses?updated_since=2026-11-01T00:00:00",
+    "header_rilevanti": {},
+    "body": {
+      "detail": [
+        {
+          "type": "timezone_aware",
+          "loc": [
+            "query",
+            "updated_since"
+          ],
+          "msg": "Input should have timezone info",
+          "input": "2026-11-01T00:00:00"
+        }
+      ]
+    }
+  },
+  "429_troppe_richieste": {
+    "status": 429,
+    "richiesta": "oltre RATE_LIMIT_PER_MIN richieste al minuto con la stessa chiave",
+    "header_rilevanti": {
+      "Retry-After": "1"
+    },
+    "body": {
+      "detail": "Troppe richieste."
+    },
+    "nota": "Ricostruita dal contratto (docs/contracts/api-v1.md §2 e §4), non catturata in produzione. Retry-After: secondi interi >= 1 da attendere prima di riprovare."
+  }
+}

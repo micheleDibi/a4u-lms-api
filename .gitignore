@@ -18,3 +18,6 @@ build/
 
 # Sistema
 .DS_Store
+
+# Dettaglio completo con contenuti reali: solo in locale (repo pubblico)
+docs/esempi/course_detail_completo.json

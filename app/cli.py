@@ -1,5 +1,8 @@
 """CLI per l'operatore: `python -m app.cli verify-urls --org <uuid> [--course <uuid>]`.
 
+`python -m app.cli export-openapi` stampa lo schema OpenAPI (senza DB né configurazione);
+`docs/openapi.json` si rigenera con `uv run python -m app.cli export-openapi > docs/openapi.json`.
+
 Raccoglie gli URL pubblici dei file (loghi compresi) con le stesse funzioni dell'API e
 fa una `HEAD` su ciascuno, segnalando quelli che non rispondono 200.
 Codici di uscita: 0 tutti 200, 1 almeno uno no, 2 configurazione non valida o org/corso
@@ -10,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
 import sys
 from collections.abc import Sequence
@@ -212,6 +216,13 @@ def setup_cli_logging(level: str) -> None:
         logging.getLogger(name).setLevel(logging.WARNING)
 
 
+def render_openapi() -> str:
+    """Lo schema OpenAPI come JSON (indent 2, ordine deterministico, newline finale)."""
+    from app.main import openapi_schema  # import locale: verify-urls non ne ha bisogno
+
+    return json.dumps(openapi_schema(), indent=2, ensure_ascii=False) + "\n"
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -220,12 +231,21 @@ def build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--course", type=UUID, default=None, help="UUID di un solo corso")
     verify.add_argument("--concurrency", type=_positive_int, default=4)
     verify.add_argument("--timeout", type=_positive_float, default=15.0, help="secondi")
+    sub.add_parser(
+        "export-openapi", help="stampa lo schema OpenAPI in JSON (non serve configurazione)"
+    )
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Punto d'ingresso; argparse esce già con 2 sugli argomenti non validi."""
     args = build_parser().parse_args(argv)
+    if args.command == "export-openapi":
+        # Bytes UTF-8 su stdout, indipendenti dal locale del terminale.
+        sys.stdout.flush()
+        sys.stdout.buffer.write(render_openapi().encode("utf-8"))
+        sys.stdout.buffer.flush()
+        return EXIT_OK
     try:
         settings = get_settings()  # valori dall'ambiente
     except ValidationError as exc:
