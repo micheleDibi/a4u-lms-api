@@ -70,7 +70,7 @@ dataclass frozen): mypy strict deve accettare `LessonRow` come `LessonFileFields
 - **Path non vuoto:** `path is not None and path.strip() != ""`.
 - `UnsafePathError` → la voce è `None`, con un log di warning `event="unsafe_file_path"` che riporta `lesson_id` e `kind`, ma **non** il path completo.
 - `generated_at` = la colonna `<x>_generated_at`.
-- `duration_s` = `float(video_duration_raw)` se è un `int` o un `float` (un `bool` non conta), finito e ≥ 0; altrimenti `None`. Se il valore è presente ma non valido → warning.
+- `duration_s` = `float(video_duration_raw)` se è un `int` o un `float` (un `bool` non conta), finito e ≥ 0; altrimenti `None`. Un intero troppo grande per un float (`OverflowError`) vale come non valido: mai 500. Se il valore è presente ma non valido → warning.
 - **Lezioni di verifica** (`is_assessment = true`): tutte e 5 le voci a `None`, qualunque cosa ci sia nelle colonne.
 
 ## 4. `logo_url` (replica di `mediaUrl()` del frontend, commit a4u fad95a4)

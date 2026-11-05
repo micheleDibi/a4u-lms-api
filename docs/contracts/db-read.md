@@ -40,7 +40,9 @@ def create_engine(settings: Settings) -> AsyncEngine
 - `create_async_engine(settings.database_url_async, pool_size=settings.db_pool_size (3),
   max_overflow=settings.db_max_overflow (4), pool_pre_ping=True, pool_recycle=1800,
   connect_args={"server_settings": {"default_transaction_read_only": "on",
-  "statement_timeout": str(settings.db_statement_timeout_ms), "application_name": "a4u-lms-api"}})`.
+  "statement_timeout": str(settings.db_statement_timeout_ms), "application_name": "a4u-lms-api"},
+  "timeout": 5}, pool_timeout=10)` — `timeout` = attesa massima (s) per aprire una connessione asyncpg,
+  `pool_timeout` = attesa massima (s) di una connessione libera dal pool (revisione finale).
 - `settings.database_url_async`: proprietà di `Settings` che converte `postgresql://` e
   `postgres://` in `postgresql+asyncpg://` (lascia invariato `postgresql+asyncpg://`).
 - La URL (contiene la password) non va mai nei log.
@@ -144,8 +146,10 @@ async def fetch_lessons(conn, course_id: UUID) -> list[LessonRow]
 
 ### `last_generated_at` (in SQL, stessa espressione in `list_courses` e `fetch_course`)
 Massimo, sulle lezioni del corso con `is_assessment = false`, di
-`GREATEST(<x>_generated_at se <x>_status = 'ready' AND COALESCE(<x>_path, '') <> '')` per
+`GREATEST(<x>_generated_at se <x>_status = 'ready' AND btrim(COALESCE(<x>_path, '')) <> '')` per
 x ∈ {pdf, slides_pdf, speech_pdf, video, avatar_video}. NULL se nessun file pronto.
+`btrim` allinea la regola a `files.md` §3 (path di soli spazi = vuoto). I path rifiutati da
+`normalize_segments` (`..`) contano ancora: incoerenza nota e accettata (P2).
 Si calcola con una subquery aggregata o `LEFT JOIN LATERAL`; niente query per lezione.
 
 ## 6. Ruolo e permessi attesi

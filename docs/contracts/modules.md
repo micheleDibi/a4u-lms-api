@@ -50,8 +50,9 @@ class AuthContext:
     org_ids: frozenset[UUID]
 
 class Authenticator:                       # contiene la cache TTL (api-v1.md §1)
-    def __init__(self, cache_seconds: int) -> None: ...
-    async def authenticate(self, conn: AsyncConnection, authorization: str | None) -> AuthContext | None
+    def __init__(self, cache_seconds: int, *, clock: Callable[[], float] = time.time) -> None: ...
+    async def authenticate(self, engine: AsyncEngine, authorization: str | None) -> AuthContext | None
+        # apre `async with engine.connect()` solo in caso di mancata cache
 
 async def require_api_key(request: Request) -> AuthContext
     # NON dipende da ConnDep (P2-1 di R6: un flood non autenticato non deve occupare il pool).
@@ -76,7 +77,8 @@ Lo stub con il solo `router` vuoto lo crea backend in T5; dal T9 il file è di b
 
 Ogni route `/v1`:
 - dichiara `ctx: AuthDep` **prima** di `conn: ConnDep` (FastAPI risolve le dipendenze in ordine: un 401/429 non prende connessioni dal pool);
-- se `org_id not in ctx.org_ids` → 404 senza query;
+- se `org_id not in ctx.org_ids` → 404 senza query **e senza prendere connessioni dal pool**: il controllo sta in una dependency
+  `require_org(org_id, ctx: AuthDep)` dichiarata prima di `conn: ConnDep`;
 - per l'URL base usa `request.app.state.settings.ovh_public_base_url`.
 
 ```python
@@ -86,6 +88,9 @@ python -m app.cli verify-urls --org <uuid> [--course <uuid>] [--concurrency 4] [
 - Legge `Settings` dall'ambiente e interroga il DB con le funzioni di `app/db/queries.py`, saltando l'autenticazione HTTP: il comando è per l'operatore sul server.
 - Raccoglie tutti gli URL dei file, i loghi compresi, e fa `HEAD` con `httpx.AsyncClient`, seguendo i redirect.
 - Stampa un report degli URL con risposta diversa da 200 (status oppure errore) e un riepilogo.
+- Legge le pagine dei corsi in una sola transazione `REPEATABLE READ` (snapshot coerente) e
+  configura i log JSON su stderr (`setup_logging`).
+- Fa HEAD solo sugli URL sotto `OVH_PUBLIC_BASE_URL + "/"`; gli altri sono «saltato (host esterno)».
 - Codice di uscita: 0 se tutti rispondono 200, 1 se almeno uno no, 2 per un errore di configurazione o un'org/corso inesistente.
 - La funzione che fa le HEAD accetta un `httpx.AsyncBaseTransport` opzionale, per i test.
 

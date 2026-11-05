@@ -54,7 +54,7 @@ OrganizationOut { id: UUID, name: str, website: str | null, logo_url: str | null
 Restituisce le organizzazioni di `AuthContext.org_ids` con `deleted_at IS NULL`, ordinate per `name, id`. `logo_url` si costruisce come in `files.md` §4.
 
 ### `GET /v1/organizations/{org_id}/courses` → `CoursePage`
-Query: `limit` (int, 1..100, default 50), `offset` (int ≥ 0, default 0), `status` (str, opzionale, max 40 caratteri, confronto esatto: uno status sconosciuto dà una lista vuota), `updated_since` (datetime ISO 8601 **con fuso**; senza fuso → 422).
+Query: `limit` (int, 1..100, default 50), `offset` (int ≥ 0, default 0), `status` (str, opzionale, max 40 caratteri, confronto esatto: uno status sconosciuto dà una lista vuota; uno status con caratteri non ammessi da Postgres, es. `\x00`, dà anch'esso una lista vuota senza interrogare il DB, mai 500), `updated_since` (datetime ISO 8601 **con fuso**; senza fuso → 422).
 
 `org_id` non in `AuthContext.org_ids` → 404, senza toccare il DB.
 ```
