@@ -2,7 +2,73 @@
   "isolation": "shared",
   "max_operatori": 5,
   "contratti": "docs/contracts",
-  "ruoli": {},
-  "worktree": { "link": [] },
+  "ruoli": {
+    "infra": {
+      "cartelle": [
+        "pyproject.toml",
+        "uv.lock",
+        "docker-compose.test.yml",
+        ".dockerignore",
+        "Dockerfile",
+        "docker-compose.yml",
+        ".env.example",
+        "README.md",
+        ".github/"
+      ],
+      "porta": null,
+      "modello": "opus"
+    },
+    "db": {
+      "cartelle": [
+        "app/db/",
+        "tests/schema.sql",
+        "tests/conftest.py",
+        "tests/factories.py",
+        "tests/db/"
+      ],
+      "porta": 55432,
+      "modello": "opus"
+    },
+    "backend": {
+      "cartelle": [
+        "app/__init__.py",
+        "app/main.py",
+        "app/config.py",
+        "app/logging.py",
+        "app/api/__init__.py",
+        "app/api/health.py",
+        "app/auth.py",
+        "app/ratelimit.py",
+        "app/middleware.py",
+        "tests/core/"
+      ],
+      "porta": 8000,
+      "modello": "opus"
+    },
+    "backend-b": {
+      "cartelle": [
+        "app/files.py",
+        "app/assessment.py",
+        "app/schemas.py",
+        "app/api/v1/",
+        "app/cli.py",
+        "tests/unit/",
+        "tests/api/",
+        "tests/cli/"
+      ],
+      "porta": 8000,
+      "modello": "opus"
+    },
+    "reviewer": {
+      "cartelle": [
+        "docs/reviews/"
+      ],
+      "porta": null,
+      "modello": "sonnet"
+    }
+  },
+  "worktree": {
+    "link": []
+  },
   "notifiche": true
 }
