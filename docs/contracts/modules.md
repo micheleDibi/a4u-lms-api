@@ -89,7 +89,7 @@ python -m app.cli verify-urls --org <uuid> [--course <uuid>] [--concurrency 4] [
 - Raccoglie tutti gli URL dei file, i loghi compresi, e fa `HEAD` con `httpx.AsyncClient`, seguendo i redirect.
 - Stampa un report degli URL con risposta diversa da 200 (status oppure errore) e un riepilogo.
 - Legge le pagine dei corsi in una sola transazione `REPEATABLE READ` (snapshot coerente) e
-  configura i log JSON su stderr (`setup_logging`).
+  configura i log JSON su stderr (handler `StreamHandler(sys.stderr)` con il formatter JSON di `app/logging.py`; lo stdout resta per il report).
 - Fa HEAD solo sugli URL sotto `OVH_PUBLIC_BASE_URL + "/"`; gli altri sono «saltato (host esterno)».
 - Codice di uscita: 0 se tutti rispondono 200, 1 se almeno uno no, 2 per un errore di configurazione o un'org/corso inesistente.
 - La funzione che fa le HEAD accetta un `httpx.AsyncBaseTransport` opzionale, per i test.

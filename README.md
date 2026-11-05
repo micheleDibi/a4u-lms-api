@@ -89,8 +89,12 @@ cp .env.example .env && chmod 600 .env
 docker compose build
 docker compose up -d
 docker compose ps                                # STATUS "healthy" dopo qualche secondo
+# Solo /health e solo dalla VM stessa: la 9002 è HTTP in chiaro.
 curl -s http://192.168.40.13:9002/health/ready   # {"status":"ok"}
 ```
+
+Le chiamate `/v1` passano **sempre** da `https://lms-api.ersaf.it`. Chiamando
+`192.168.40.13:9002` direttamente, il Bearer token viaggerebbe in chiaro sulla LAN.
 
 Aggiornamento: `git pull && docker compose build && docker compose up -d`.
 
@@ -100,6 +104,30 @@ Caratteristiche del container:
   capability, `no-new-privileges`, 256 MB di memoria;
 - `HEALTHCHECK` su `/health/live`;
 - log json-file a rotazione (20 MB × 5).
+
+### Firewall sulla porta 9002 (PROPOSTA, non applicata)
+
+La 9002 deve accettare connessioni **solo dal proxy 192.168.40.10**. Le regole `INPUT`, e
+quindi `ufw` senza configurazioni aggiuntive, **non** proteggono le porte pubblicate da
+Docker: il traffico verso i container passa dalla catena `FORWARD` dopo il DNAT. La regola va
+nella catena `DOCKER-USER`, che Docker non svuota. Nella catena la porta è già tradotta in
+8000, quindi si confronta la destinazione originale tramite conntrack:
+
+```sh
+sudo iptables -I DOCKER-USER -p tcp -m conntrack \
+  --ctorigdst 192.168.40.13 --ctorigdstport 9002 \
+  ! -s 192.168.40.10 -j DROP
+sudo iptables -L DOCKER-USER -n -v --line-numbers   # verifica
+```
+
+- **Persistenza:** la regola non sopravvive a un riavvio. Si può usare `iptables-persistent`
+  (`netfilter-persistent save`), oppure, con `ufw`, lo stesso blocco in
+  `/etc/ufw/after.rules`, sotto `*filter`: prima si dichiara la catena con
+  `:DOCKER-USER - [0:0]`, poi si aggiunge la regola `-A DOCKER-USER ...`.
+- **Curl dalla VM:** le connessioni partite dalla VM stessa non passano da `FORWARD`, quindi
+  il `curl` di `/health` dalla VM continua a funzionare.
+- **Verifica:** da un altro host della LAN, `curl -m 3 http://192.168.40.13:9002/health/live`
+  deve andare in timeout; dal proxy deve rispondere `{"status":"ok"}`.
 
 ## 5. Esposizione TLS (PROPOSTA, non applicata)
 
@@ -129,6 +157,10 @@ il limite il proxy risponde 429.
 | SSL → SSL Certificate | *Request a new SSL Certificate* (Let's Encrypt) |
 | SSL → Force SSL, HTTP/2 Support | attivi (HSTS a scelta) |
 | Advanced | `limit_req zone=lms_api_per_ip burst=20 nodelay; limit_req_status 429;` più, facoltativi, `client_max_body_size 16k; proxy_read_timeout 60s;` |
+
+Per tenere `/health/*` interno, si aggiunge nel tab *Advanced* un blocco `location /health/`
+uguale a quello del blocco nginx qui sotto, con `allow`/`deny` e `proxy_pass`. In alternativa
+si crea una *Custom Location* `/health/` con `allow`/`deny` nel suo campo di configurazione.
 
 In NPM la `limit_req_zone` va nel contesto `http`, non nel tab *Advanced*, che finisce nel
 blocco `server`. Si aggiunge nel file `/data/nginx/custom/http_top.conf` del container NPM:
@@ -170,6 +202,19 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 60s;
     }
+
+    # /health/* solo dalle reti interne (da adattare: LAN, VPN, monitoraggio).
+    # /health/ready prende una connessione al DB a ogni chiamata: da Internet non serve.
+    location /health/ {
+        allow 192.168.40.0/24;
+        allow 127.0.0.1;
+        deny  all;
+
+        proxy_pass http://192.168.40.13:9002;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Forwarded-For   $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
 }
 ```
 
@@ -179,6 +224,7 @@ server {
 BASE=https://lms-api.ersaf.it
 TOKEN='a4u_lms_xxxxxxxx_...'   # meglio da un file o da una variabile, non nella history
 
+# /health/* risponde solo dalle reti interne, se il proxy è configurato come al §5
 curl -s "$BASE/health/live"
 curl -s "$BASE/health/ready"
 
@@ -202,6 +248,25 @@ I valori di `status` sono quelli di `COURSE_STATUSES` in a4u (`backend/app/model
 `draft`, gli stati di avanzamento `*_pending`, `*_ready` e `*_approved` (dall'architettura fino
 all'avatar), poi `published` e `archived`. Uno status sconosciuto restituisce una lista vuota,
 non un errore.
+
+## Per l'integratore LMS
+
+- **Campi da sanificare.** `website` e `logo_url` arrivano **così come sono salvati in a4u**,
+  senza filtri sullo schema:
+  - `logo_url` può essere un URL `http://` o `https://` di un altro host, oppure un `data:`
+    di qualsiasi tipo;
+  - `website` è testo libero e può contenere anche `javascript:`.
+
+  Prima di inserirli in una pagina HTML vanno validati: accettare solo `https://` (o
+  `http://`) e `data:image/(png|jpeg|gif|webp);base64,` per il logo, mettere il valore in
+  attributi con escape e non in `innerHTML`. Altrimenti il rischio è un XSS memorizzato
+  nell'LMS.
+- **Testo dei corsi.** Lo stesso vale per i testi (titoli, descrizioni, domande): sono
+  testo semplice, da mostrare con escape.
+- **Soluzioni dei test.** Il campo `test` contiene le soluzioni (`correct_option_id`,
+  `expected_answer`): non vanno mandate al browser dello studente.
+- **Cache dei file.** Gli URL dei file cambiano (`?v=`) a ogni rigenerazione. Per la
+  sincronizzazione incrementale si usa `updated_since`.
 
 ## 7. Autenticazione, cache e rate limit
 
@@ -266,8 +331,18 @@ docker compose exec lms-api python -m app.cli verify-urls --org <org_uuid> --cou
 # opzioni: --concurrency 4 (HEAD in parallelo), --timeout 15 (secondi)
 ```
 
-Il comando fa una `HEAD` su ogni URL, seguendo i redirect. Controlla anche il logo, se è un
-URL `http(s)`: i loghi `data:` o `//...` si saltano. Stampa gli URL che non rispondono 200 (`status  etichetta  url`) e un riepilogo.
+Il comando fa una `HEAD`, seguendo i redirect, su ogni URL che inizia con
+`OVH_PUBLIC_BASE_URL/`, logo compreso. Gli URL di altri host, per esempio un logo con un URL
+assoluto esterno, **non** vengono contattati: compaiono come `saltato (host esterno)` e non
+cambiano il codice di uscita. I loghi `data:` non si controllano.
+
+Corsi e lezioni si leggono in una sola transazione `REPEATABLE READ`. Lo snapshot è
+coerente: un corso aggiornato durante la scansione non si salta e non si conta due volte.
+
+Il comando stampa:
+- su stdout, gli URL che non rispondono 200 (`status  etichetta  url`), quelli saltati e un
+  riepilogo;
+- su stderr, in JSON, i warning (per esempio `unsafe_file_path`).
 
 Codici di uscita:
 - `0`: tutti gli URL rispondono 200;
@@ -306,3 +381,14 @@ Variabili in `.env` (modello in `.env.example`, dettaglio in `docs/contracts/con
 | `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | `3` / `4` | pool di connessioni |
 | `DOCS_ENABLED` | `false` | `/docs`, `/redoc`, `/openapi.json` |
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+
+Limiti fissi nel codice (`app/db/engine.py`, `docs/contracts/db-read.md` §3):
+- **Connessione:** al massimo **5 s** per aprire una connessione a Postgres (`timeout` di
+  asyncpg);
+- **Pool:** al massimo **10 s** di attesa per una connessione libera (`pool_timeout`, pool
+  di 3 + 4);
+- **Query:** `DB_STATEMENT_TIMEOUT_MS` per ogni query.
+
+Le sessioni sono `default_transaction_read_only=on`, con `application_name=a4u-lms-api`
+visibile in `pg_stat_activity`. Se il DB non risponde, `/health/ready` dà 503 e le richieste
+`/v1` falliscono in pochi secondi, invece di restare appese.
